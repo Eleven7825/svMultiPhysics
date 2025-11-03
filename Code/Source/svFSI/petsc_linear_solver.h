@@ -76,12 +76,12 @@ typedef struct {
 } LSCtx;
 
 
-/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     Global variables
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-LHSCtx         plhs;       /* PETSc lhs */
-LSCtx         *psol;       /* PETSc solver */
-PetscLogStage  stages[6];  /* performance tuning. */
+extern LHSCtx         plhs;       /* PETSc lhs */
+extern LSCtx         *psol;       /* PETSc solver */
+extern PetscLogStage  stages[6];  /* performance tuning. */
 
 
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  

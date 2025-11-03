@@ -77,10 +77,10 @@ if(SV_USE_PETSC)
   IF(PETSC_FOUND)
     SET(PETSC_DIR $ENV{PETSC_DIR})
     SET(PETSC_INCLUDE_DIRS "${PETSC_DIR}/include;${PETSC_DIR}/../include")
-    SET(PETSC_LIBRARY_DIRS "-L${PETSC_DIR}/lib -lpetsc")
+    SET(PETSC_LIBRARIES "${PETSC_DIR}/lib/libpetsc.so")
     MESSAGE("\nFound PETSC!  Here are the details: ")
     MESSAGE("   PETSC_DIR = ${PETSC_DIR}")
-    MESSAGE("   PETSC_LIBRARY_DIRS = ${PETSC_LIBRARY_DIRS}")
+    MESSAGE("   PETSC_LIBRARIES = ${PETSC_LIBRARIES}")
     MESSAGE("   PETSC_INCLUDE_DIRS = ${PETSC_INCLUDE_DIRS}")
     MESSAGE("End of PETSC details\n")
     MESSAGE("Setting WITH_PETSC to true\n")
@@ -214,7 +214,6 @@ if(WITH_PETSC)
 
   # PETSC directories and libraries
   include_directories(${PETSC_INCLUDE_DIRS})
-  link_directories(${PETSC_LIBRARY_DIRS})
 endif()
 
 simvascular_add_executable(${SV_SVFSI_EXE}
@@ -248,7 +247,7 @@ if(WITH_TRILINOS)
 endif()
 
 if(WITH_PETSC)
-  target_link_libraries(${SV_SVFSI_EXE} ${PETSC_LIBRARY_DIRS})
+  target_link_libraries(${SV_SVFSI_EXE} ${PETSC_LIBRARIES})
 endif()
 
 # coverage

@@ -32,6 +32,11 @@
 #include "petsc_linear_solver.h"
 #include <locale.h>
 
+/* Global variable definitions */
+LHSCtx         plhs;       /* PETSc lhs */
+LSCtx         *psol;       /* PETSc solver */
+PetscLogStage  stages[6];  /* performance tuning. */
+
 /*
     Nomenclature used in this file:
     - global: across all MPI processes
