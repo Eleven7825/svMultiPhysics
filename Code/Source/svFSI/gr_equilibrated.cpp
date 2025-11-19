@@ -129,6 +129,9 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
 
   // dWSS
   const vec3d dtau(eVWP(9), eVWP(10), eVWP(11));
+
+  // WSS gradient magnitude (from Python, magnitude-with-gradient-tracking branch)
+  const double tau_grad = eVWP(13);
   //	std::cout<<eVWP[9]<<" "<<eVWP[10]<<" "<<eVWP[11]<<std::endl;
 
   // pointwise, consistent with mesh generated with Matlab script
@@ -952,6 +955,7 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
     grInt(k + 7) = KsKi; // kski = delta sigma / deltau tau
     grInt(k + 8) = grInt(k + 6) - KsKi * grInt(k + 5); // ups -> 0
     grInt(k + 11) = phic;
+    grInt(k + 12) = tau_grad; // WSS gradient magnitude
   }
   // store g&r state
   if (mode == gr) {
@@ -967,6 +971,7 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
         grInt(k + 6) / grInt(k + 5); // kski = delta sigma / deltau tau
     grInt(k + 8) = grInt(k + 6) - KsKi * grInt(k + 5); // ups -> 0
     grInt(k + 11) = phic_gp;
+    grInt(k + 12) = tau_grad; // WSS gradient magnitude
   }
 }
 
