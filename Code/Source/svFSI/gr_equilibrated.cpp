@@ -125,7 +125,7 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
   vec3d N[3];
 
   // WSS
-  const double tau = eVWP(6);
+  const double wss_gradient = eVWP(6);
 
   // dWSS
   const vec3d dtau(eVWP(9), eVWP(10), eVWP(11));
@@ -224,9 +224,6 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
   // Lagrange multiplier
   double p;
   double p_gp;
-
-  // WSS ratio
-  double tau_ratio;
 
   // intramural stress
   double svh;
@@ -619,17 +616,12 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
         ro / rIo * lt -
         (ro - rIo) / rIo * lr; // rIrIo -> rIorIo = 1 for F -> Fo
 
-    if (grM.coup_wss)
-      tau_ratio = tau / tauo;
-    else
-      tau_ratio = pow(rIrIo, -3);
-
     mat3ds sNm = phim * smo; // phim*smhato = phim*smo
     mat3ds sNc = phic * sco; // phic*schato = phic*sco
 
     const mat3ds sNf = sNm + sNc;
 
-    const double Cratio = CB - CS * (EPS * tau_ratio - 1.0);
+    const double Cratio = CB - CS * (EPS * wss_gradient);
     mat3ds sNa;
     sNa.zero();
     if (Cratio > 0)
@@ -646,7 +638,7 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
     svh = 1.0 / 3.0 / J * Sx.dotdot(C);
 
     p_gp = svh - svo / (1.0 - delta) *
-                     (1.0 + KsKi * (EPS * tau_ratio - 1.0) - KfKi * inflam);
+                     (1.0 + KsKi * (EPS * wss_gradient) - KfKi * inflam);
     // const double p = grInt(30);
     const double p = p_gp;
     S = Sx - J * p * Ci;
@@ -786,7 +778,7 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
       css +=
           1.0 / 3.0 * (2.0 * sx.tr() * IoIss - 2.0 * Ixsx - ddot(IxIss, css));
       css += svo / (1.0 - delta) *
-             (1.0 + KsKi * (EPS * tau_ratio - 1.0) - KfKi * inflam) *
+             (1.0 + KsKi * (EPS * wss_gradient) - KfKi * inflam) *
              (IxIss - 2.0 * IoIss);
 
       // wss linearization
@@ -926,7 +918,7 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
     grInt(0) = Jo;
     grInt(1) = svo;
     grInt(2) = phic;
-    grInt(3) = tau;
+    grInt(3) = wss_gradient;
     grInt(4) = po;
     int k = 5;
     for (int i = 0; i < 3; i++)
@@ -963,7 +955,7 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
     grInt(k) = J;
     grInt(k + 1) = 1.0 / 3.0 / J * S.dotdot(C);
     grInt(k + 2) = phico;
-    grInt(k + 3) = tau_ratio;
+    grInt(k + 3) = wss_gradient;
     grInt(k + 4) = p_gp;
     grInt(k + 5) = grInt(k + 3) - 1.0;            // delta tau
     grInt(k + 6) = grInt(k + 1) / grInt(1) - 1.0; // delta sigma
