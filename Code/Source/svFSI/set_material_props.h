@@ -213,7 +213,12 @@ SeMaterialPropertiesMapType set_material_props = {
   lDmn.grM.KfKi = params.KfKi.value();
   lDmn.grM.inflam = params.inflam.value();
   lDmn.grM.aexp = params.aexp.value();
-  lDmn.grM.delta = params.delta.value();
+  lDmn.grM.delta       = params.delta.value();
+  lDmn.grM.use_nonlocal = params.use_nonlocal.value();
+  lDmn.grM.l_nl         = params.l_nl.value();
+  lDmn.grM.beta_nl      = params.beta_nl.value();
+  lDmn.grM.t_nl         = params.t_nl.value();
+  lDmn.grM.ro_tol       = params.ro_tol.value();
 } },
 
 };

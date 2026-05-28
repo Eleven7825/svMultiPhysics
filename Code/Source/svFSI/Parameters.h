@@ -545,6 +545,11 @@ class GREquilibratedParameters : public ParameterLists
     Parameter<double> inflam;
     Parameter<double> aexp;
     Parameter<double> delta;
+    Parameter<bool>   use_nonlocal;
+    Parameter<double> l_nl;
+    Parameter<double> beta_nl;
+    Parameter<double> t_nl;
+    Parameter<double> ro_tol;
 };
 
 /// @brief The ConstitutiveModelParameters class store parameters

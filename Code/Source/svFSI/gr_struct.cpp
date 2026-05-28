@@ -35,6 +35,7 @@
 // Replicates the Fortran functions in 'STRUCT.f'.
 
 #include "gr_struct.h"
+#include "gr_nonlocal.h"
 #include "sv_struct.h"
 
 #include "all_fun.h"
@@ -71,6 +72,28 @@ void construct_gr(ComMod &com_mod, const mshType &lM, const Array<double> &Dg,
   // Make editable copy
   Array<double> e_Dg(Dg);
 
+  // Retrieve G&R model parameters for the current equation/domain
+  const int cEq  = com_mod.cEq;
+  const int cDmn = com_mod.cDmn;
+  const auto &grM = com_mod.eq[cEq].dmn[cDmn].grM;
+
+  // Non-local pre-pass: compute element-average F and spatially averaged F_bar
+  std::vector<std::array<double,9>> F_elem, F_bar_elem;
+  if (grM.use_nonlocal) {
+    const int nEl = lM.nEl;
+    F_elem.resize(nEl);
+    F_bar_elem.resize(nEl);
+
+    std::vector<double> theta_elem(nEl), z_elem(nEl), ro_elem(nEl);
+    for (int e = 0; e < nEl; e++) {
+      gr_nonlocal_ns::compute_elem_coords(lM, grM, e,
+                                          theta_elem[e], z_elem[e], ro_elem[e]);
+      gr_nonlocal_ns::compute_elem_F(lM, com_mod, Dg, e, F_elem[e].data());
+    }
+    gr_nonlocal_ns::compute_nonlocal_F(lM, grM, F_elem, theta_elem, z_elem,
+                                       ro_elem, F_bar_elem);
+  }
+
   // Loop over all elements of mesh
   for (int e = 0; e < lM.nEl; e++) {
     // Reset
@@ -78,11 +101,13 @@ void construct_gr(ComMod &com_mod, const mshType &lM, const Array<double> &Dg,
     lR = 0.0;
     lK = 0.0;
 
+    const double *F_bar_e = grM.use_nonlocal ? F_bar_elem[e].data() : nullptr;
+
     // Update G&R internal variables
-    eval_gr(e, com_mod, lM, Dg, ptr, lR, lK, false, false);
+    eval_gr(e, com_mod, lM, Dg, ptr, lR, lK, false, false, F_bar_e);
 
     // Compute stress and tangent
-    eval_gr(e, com_mod, lM, Dg, ptr, lR, lK, true, true);
+    eval_gr(e, com_mod, lM, Dg, ptr, lR, lK, true, true, F_bar_e);
 
     // Assemble into global residual and tangent
     lhsa_ns::do_assem(com_mod, eNoN, ptr, lK, lR);
@@ -92,7 +117,8 @@ void construct_gr(ComMod &com_mod, const mshType &lM, const Array<double> &Dg,
 /// @brief
 void eval_gr(const int &e, ComMod &com_mod, const mshType &lM,
              const Array<double> &Dg, Vector<int> &ptr, Array<double> &lR,
-             Array3<double> &lK, const bool eval_s, const bool eval_cc) {
+             Array3<double> &lK, const bool eval_s, const bool eval_cc,
+             const double *F_bar_e) {
   using namespace consts;
 
   const int nsd = com_mod.nsd;
@@ -153,7 +179,7 @@ void eval_gr(const int &e, ComMod &com_mod, const mshType &lM,
     }
 
     struct_3d_carray(com_mod, eNoN, w, N, Nx, dl, gr_int_g, gr_props_l, lR, lK,
-                     eval_s, eval_cc);
+                     eval_s, eval_cc, F_bar_e);
 
     // Set internal growth and remodeling variables
     if (com_mod.grEq) {
@@ -170,7 +196,7 @@ void struct_3d_carray(ComMod &com_mod, const int eNoN, const double w,
                       const Array<double> &dl, Vector<double> &gr_int_g,
                       Array<double> &gr_props_l, Array<double> &lR,
                       Array3<double> &lK, const bool eval_s,
-                      const bool eval_cc) {
+                      const bool eval_cc, const double *F_bar_e) {
   using namespace consts;
   using namespace mat_fun;
 
@@ -219,7 +245,20 @@ void struct_3d_carray(ComMod &com_mod, const int eNoN, const double w,
   // Voigt notationa (Dm)
   double S[3][3];
   double Dm[6][6];
-  get_pk2cc<3>(com_mod, dmn, F, gr_int_g, gr_props_g, S, Dm, eval_s, eval_cc);
+
+  // Use non-local averaged F_bar for material evaluation if provided.
+  // Kinematics (P = F*S, Bm, NxSNx) continue to use the original F.
+  double F_mat[3][3];
+  if (F_bar_e != nullptr) {
+    for (int i = 0; i < 3; i++)
+      for (int j = 0; j < 3; j++)
+        F_mat[i][j] = F_bar_e[i*3 + j];
+  } else {
+    for (int i = 0; i < 3; i++)
+      for (int j = 0; j < 3; j++)
+        F_mat[i][j] = F[i][j];
+  }
+  get_pk2cc<3>(com_mod, dmn, F_mat, gr_int_g, gr_props_g, S, Dm, eval_s, eval_cc);
 
   if (!eval_s && !eval_cc) {
     return;

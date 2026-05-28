@@ -767,6 +767,11 @@ GREquilibratedParameters::GREquilibratedParameters()
   set_parameter("inflam", 0.0, required, inflam);
   set_parameter("aexp", 0.0, required, aexp);
   set_parameter("delta", 0.0, required, delta);
+  set_parameter("use_nonlocal", false, !required, use_nonlocal);
+  set_parameter("l_nl",         0.0,   !required, l_nl);
+  set_parameter("beta_nl",      0.5,   !required, beta_nl);
+  set_parameter("t_nl",         1.0,   !required, t_nl);
+  set_parameter("ro_tol",       0.01,  !required, ro_tol);
 
   set_xml_element_name("Constitutive_model type=GR_equilibrated");
 }

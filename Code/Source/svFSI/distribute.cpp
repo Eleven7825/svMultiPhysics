@@ -1252,6 +1252,11 @@ void dist_gr_consts(const ComMod& com_mod, const CmMod& cm_mod, const cmType& cm
   cm.bcast(cm_mod, &grM.aexp);
   cm.bcast(cm_mod, &grM.delta);
   cm.bcast(cm_mod, &grM.example);
+  cm.bcast(cm_mod, &grM.use_nonlocal);
+  cm.bcast(cm_mod, &grM.l_nl);
+  cm.bcast(cm_mod, &grM.beta_nl);
+  cm.bcast(cm_mod, &grM.t_nl);
+  cm.bcast(cm_mod, &grM.ro_tol);
 }
 
 

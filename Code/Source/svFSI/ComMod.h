@@ -421,6 +421,12 @@ class grModelType
     double aexp = 0.0;
     double delta = 0.0;
 
+    bool   use_nonlocal = false;
+    double l_nl         = 0.0;
+    double beta_nl      = 0.5;
+    double t_nl         = 1.0;
+    double ro_tol       = 0.01;
+
 };
 
 /// @brief Fluid viscosity model type

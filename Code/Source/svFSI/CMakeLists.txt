@@ -147,6 +147,7 @@ set(CSRCS
   fs.h fs.cpp
   fft.h fft.cpp
   gr_equilibrated.h gr_equilibrated.cpp
+  gr_nonlocal.h gr_nonlocal.cpp
   gr_struct.h gr_struct.cpp
   heatf.h heatf.cpp
   heats.h heats.cpp

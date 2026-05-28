@@ -48,14 +48,14 @@ void construct_gr(ComMod &com_mod, const mshType &lM, const Array<double> &Dg,
 void eval_gr(const int &e, ComMod &com_mod, const mshType &lM,
              const Array<double> &Dg, Vector<int> &ptr, Array<double> &lR,
              Array3<double> &lK, const bool eval_s = true,
-             const bool eval_cc = true);
+             const bool eval_cc = true, const double *F_bar_e = nullptr);
 
 void struct_3d_carray(ComMod &com_mod, const int eNoN, const double w,
                       const Vector<double> &N, const Array<double> &Nx,
                       const Array<double> &dl, Vector<double> &gr_int_g,
                       Array<double> &gr_props_l, Array<double> &lR,
                       Array3<double> &lK, const bool eval_s = true,
-                      const bool eval_cc = true);
+                      const bool eval_cc = true, const double *F_bar_e = nullptr);
 
 template <size_t N>
 void cc_to_voigt_carray(const double CC[N][N][N][N], double Dm[2 * N][2 * N]) {
