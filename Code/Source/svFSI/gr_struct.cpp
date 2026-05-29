@@ -106,8 +106,15 @@ void construct_gr(ComMod &com_mod, const mshType &lM, const Array<double> &Dg,
     // Update G&R internal variables
     eval_gr(e, com_mod, lM, Dg, ptr, lR, lK, false, false, F_bar_e);
 
-    // Compute stress and tangent
-    eval_gr(e, com_mod, lM, Dg, ptr, lR, lK, true, true, F_bar_e);
+    // Compute stress and tangent.
+    // NOTE: F_bar is NOT passed here. Passing F̄ to the stress/tangent
+    // evaluation breaks Newton consistency: the tangent cannot account for
+    // the filter's non-local spatial coupling (∂F̄/∂u spans all neighbour
+    // elements) without differentiating the kernel, causing Newton
+    // divergence once the deformation becomes spatially non-uniform.
+    // A consistent implementation requires either a full non-local tangent
+    // or a post-convergence stimulus update strategy.
+    eval_gr(e, com_mod, lM, Dg, ptr, lR, lK, true, true, nullptr);
 
     // Assemble into global residual and tangent
     lhsa_ns::do_assem(com_mod, eNoN, ptr, lK, lR);
