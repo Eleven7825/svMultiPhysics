@@ -32,7 +32,93 @@
 
 #include "gr_equilibrated.h"
 
+#include <algorithm>
+#include <fstream>
+#include <map>
+#include <string>
+#include <vector>
+
 namespace gr_equilibrated_ns {
+
+namespace {
+
+// A tabulated load curve: monotonically increasing step index x mapped to the
+// load factor y. x is the integer load-step number (0 = pre-stress, 1..nloads =
+// G&R loads), matching the step the solver is currently on.
+struct LoadCurve {
+  std::vector<double> x;
+  std::vector<double> y;
+};
+
+// Read (and cache) a 2-column load curve from file. Each rank reads its own copy
+// from the shared filesystem the first time the curve is needed, so no MPI
+// distribution of the (variable-length) curve is required. Columns are
+// "x y" per line, with x the load-step number and y the load factor.
+const LoadCurve &get_load_curve(const std::string &path) {
+  static std::map<std::string, LoadCurve> cache;
+  auto it = cache.find(path);
+  if (it != cache.end())
+    return it->second;
+
+  LoadCurve curve;
+  std::ifstream in(path);
+  if (!in)
+    throw std::runtime_error("[gr_equilibrated] cannot open load_file '" + path +
+                             "'");
+  double xi, yi;
+  while (in >> xi >> yi) {
+    curve.x.push_back(xi);
+    curve.y.push_back(yi);
+  }
+  if (curve.x.size() < 2)
+    throw std::runtime_error("[gr_equilibrated] load_file '" + path +
+                             "' needs at least 2 rows of 'x y'");
+
+  auto res = cache.emplace(path, std::move(curve));
+  return res.first->second;
+}
+
+// Linearly interpolate the load curve at step x, clamping outside its range.
+// When x lands exactly on a tabulated step (the usual case, since steps are
+// integers), this returns that step's value with no interpolation error.
+double interp_load_curve(const LoadCurve &curve, double x) {
+  if (x <= curve.x.front())
+    return curve.y.front();
+  if (x >= curve.x.back())
+    return curve.y.back();
+  const auto hi = std::upper_bound(curve.x.begin(), curve.x.end(), x);
+  const size_t i = hi - curve.x.begin();
+  const double x0 = curve.x[i - 1], x1 = curve.x[i];
+  const double y0 = curve.y[i - 1], y1 = curve.y[i];
+  return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+}
+
+// Apply the load profile: map the linear pseudo-time factor f_lin in [0,1] to
+// the effective load factor that ramps the G&R insult. The profile is selected
+// from the input file (load_profile / load_steep / load_file) rather than
+// hard-coded:
+//   "linear" : f_lin                              (no reshaping)
+//   "tanh"   : tanh(steep*f_lin)/tanh(steep)      (front-loaded; historical default)
+//   "power"  : f_lin^steep                        (back-loaded for steep>1)
+//   "file"   : load factor read directly per step from a tabulated curve,
+//              indexed by the integer step number 'step' (0 = pre-stress,
+//              1..nloads = G&R loads). One curve entry per step.
+double eval_load_profile(const grModelType &grM, double f_lin, double step) {
+  const std::string &prof = grM.load_profile;
+  if (prof == "linear") {
+    return f_lin;
+  } else if (prof == "tanh") {
+    return std::tanh(grM.load_steep * f_lin) / std::tanh(grM.load_steep);
+  } else if (prof == "power") {
+    return std::pow(f_lin, grM.load_steep);
+  } else if (prof == "file") {
+    return interp_load_curve(get_load_curve(grM.load_file), step);
+  }
+  throw std::runtime_error("[gr_equilibrated] unknown load_profile '" + prof +
+                           "' (expected linear|tanh|power|file)");
+}
+
+} // namespace
 
 // Call with fixed-size arrays (more efficient)
 void stress_tangent_(const grModelType &grM, const double Fe[3][3],
@@ -244,9 +330,13 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
 
   // examples from fig. 8, doi.org/10.1016/j.cma.2020.113156
   if (example == aneurysm and mode == gr) {
-    // apply transfer function to advance time more equally
-    const double t_fac = 2.0;
-    f_time = tanh(t_fac * f_time) / tanh(t_fac);
+    // reshape the linear time factor into the effective load factor using the
+    // load profile selected in the input file (see eval_load_profile). The
+    // default profile ("tanh", load_steep = 2.0) reproduces the historical
+    // hard-coded transfer function that advances time more equally. The "file"
+    // profile reads the factor directly per load step; the step number is
+    // t/dt - 1 so that 0 = pre-stress and 1..nloads = the G&R loads.
+    f_time = eval_load_profile(grM, f_time, t / dt - 1.0);
 
     // no fiber reorientation
     aexp = 0.0;

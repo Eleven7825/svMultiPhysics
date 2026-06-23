@@ -515,6 +515,11 @@ class GREquilibratedParameters : public ParameterLists
     Parameter<int> n_t_end;
     Parameter<int> example;
     Parameter<bool> coup_wss;
+    // Load profile controlling how the G&R insult is ramped over pseudo-time.
+    // Optional: defaults reproduce the historical hard-coded tanh(t_fac=2) ramp.
+    Parameter<std::string> load_profile;
+    Parameter<double> load_steep;
+    Parameter<std::string> load_file;
     Parameter<double> KsKi;
     Parameter<double> curve;
     Parameter<double> mult;

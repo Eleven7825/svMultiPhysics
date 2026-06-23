@@ -737,6 +737,12 @@ GREquilibratedParameters::GREquilibratedParameters()
   set_parameter("n_t_end", 0, required, n_t_end);
   set_parameter("example", 0, required, example);
   set_parameter("coup_wss", false, required, coup_wss);
+
+  // Load profile (optional). Defaults reproduce the historical hard-coded ramp
+  // (tanh with t_fac = 2.0), so existing input files behave unchanged.
+  set_parameter("load_profile", std::string("tanh"), !required, load_profile);
+  set_parameter("load_steep", 2.0, !required, load_steep);
+  set_parameter("load_file", std::string(""), !required, load_file);
   set_parameter("KsKi", 0.0, required, KsKi);
   set_parameter("curve", 0.0, required, curve);
   set_parameter("mult", 0.0, required, mult);

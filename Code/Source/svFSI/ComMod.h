@@ -390,6 +390,19 @@ class grModelType
     int n_t_end = 0;
     int example = 0;
     bool coup_wss = false;
+
+    // Load profile: shape of the time factor f in [0,1] that ramps the G&R
+    // insult over pseudo-time. Set from the input file so it can be controlled
+    // externally (e.g. from svFSGe/fsg.py) instead of being hard-coded.
+    //   load_profile : "linear" | "tanh" | "power" | "file"
+    //   load_steep   : shape parameter (tanh steepness / power exponent)
+    //   load_file    : path to a 2-column (x in [0,1], y) load curve, used when
+    //                  load_profile == "file"
+    // Defaults reproduce the historical hard-coded profile: tanh with t_fac=2.
+    std::string load_profile = "tanh";
+    double load_steep = 2.0;
+    std::string load_file = "";
+
     double KsKi = 0.0;
     double curve = 0.0;
     double mult = 0.0;
