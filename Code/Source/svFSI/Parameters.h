@@ -520,6 +520,17 @@ class GREquilibratedParameters : public ParameterLists
     Parameter<std::string> load_profile;
     Parameter<double> load_steep;
     Parameter<std::string> load_file;
+    // Spatial insult profile (aneurysm localization). Optional: defaults
+    // reproduce the historical hard-coded super-Gaussian insult.
+    Parameter<std::string> insult_profile;
+    Parameter<double> insult_mag;
+    Parameter<double> insult_z_loc;
+    Parameter<double> insult_z_wid;
+    Parameter<double> insult_z_exp;
+    Parameter<bool> insult_asym;
+    Parameter<double> insult_theta_wid;
+    Parameter<double> insult_theta_exp;
+    Parameter<std::string> insult_file;
     Parameter<double> KsKi;
     Parameter<double> curve;
     Parameter<double> mult;

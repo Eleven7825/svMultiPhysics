@@ -118,6 +118,37 @@ double eval_load_profile(const grModelType &grM, double f_lin, double step) {
                            "' (expected linear|tanh|power|file)");
 }
 
+// Evaluate the spatial insult profile that localizes the aneurysm: the elastin
+// and stimulus knock-down at a material point is scaled by f_axi * f_cir, the
+// product of an axial and an azimuthal factor (each in (0, 1]). The profile is
+// selected from the input file (insult_profile / insult_* / insult_file) rather
+// than hard-coded. Returns the two factors separately so the caller can combine
+// them in the original multiply order (keeps results bit-identical to the old
+// hard-coded form). z is the axial coordinate, lo the (scaled) tube length.
+//   axial  "gaussian" : exp(-|(z - z_loc*lo)/(z_wid*lo/mult)|^z_exp)
+//   axial  "file"     : tabulated factor f_axi vs normalized axial pos z/lo
+//   azimuth (asym)    : exp(-|(azimuth - pi)/(pi*theta_wid)|^theta_exp), else 1
+void eval_insult_profile(const grModelType &grM, double z, double azimuth,
+                         double lo, double mult, double &f_axi, double &f_cir) {
+  const std::string &prof = grM.insult_profile;
+  if (prof == "gaussian") {
+    const double z_om = grM.insult_z_loc * lo;
+    const double z_od = grM.insult_z_wid * lo / mult;
+    f_axi = std::exp(-std::pow(std::abs((z - z_om) / z_od), grM.insult_z_exp));
+  } else if (prof == "file") {
+    f_axi = interp_load_curve(get_load_curve(grM.insult_file), z / lo);
+  } else {
+    throw std::runtime_error("[gr_equilibrated] unknown insult_profile '" +
+                             prof + "' (expected gaussian|file)");
+  }
+
+  f_cir = 1.0;
+  if (grM.insult_asym)
+    f_cir = std::exp(-std::pow(std::abs((azimuth - M_PI) /
+                                        (M_PI * grM.insult_theta_wid)),
+                               grM.insult_theta_exp));
+}
+
 } // namespace
 
 // Call with fixed-size arrays (more efficient)
@@ -341,39 +372,14 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
     // no fiber reorientation
     aexp = 0.0;
 
-    // location of aneurysm (= middle)
-    const double z_om = lo / 2.0;
+    // spatial insult profile (axial x azimuthal factors), configured from the
+    // input file; defaults reproduce the historical hard-coded super-Gaussian.
+    double f_axi, f_cir;
+    eval_insult_profile(grM, X.z, azimuth, lo, mult, f_axi, f_cir);
 
-    double theta_od;
-    double phi_e_hm = 0.7;
-    int vza;
-    int vzc;
-    double z_od;
-    if (example_asym) {
-      // 8d
-      //			z_od = lo/3.0/mult;
-      //			vz = 5;
-      //			theta_od = 3.0;
-
-      z_od = lo / 4.0 / mult;
-      theta_od = 0.55;
-      vza = 2;
-      vzc = 6;
-    } else {
-      // 8b, 8c
-      z_od = lo / 4.0 / mult;
-      vza = 2;
-    }
-
-    // axial factor (0, 1]
-    const double f_axi = exp(-pow(abs((X.z - z_om) / z_od), vza));
-
-    // azimuth factor (0, 1]
-    double f_cir = 1.0;
-    if (example_asym)
-      f_cir = exp(-pow(abs((azimuth - M_PI) / (M_PI * theta_od)), vzc));
-
-    mu *= 1.0 - f_time * f_axi * f_cir * phi_e_hm;
+    // insult_mag (phi_e_hm) only scales the elastin (mu) knock-down; the
+    // stimulus ratio KsKi is knocked down by the shape alone.
+    mu *= 1.0 - f_time * f_axi * f_cir * grM.insult_mag;
     KsKi *= 1.0 - f_time * f_axi * f_cir;
   }
 

@@ -743,6 +743,18 @@ GREquilibratedParameters::GREquilibratedParameters()
   set_parameter("load_profile", std::string("tanh"), !required, load_profile);
   set_parameter("load_steep", 2.0, !required, load_steep);
   set_parameter("load_file", std::string(""), !required, load_file);
+
+  // Spatial insult profile (optional). Defaults reproduce the historical
+  // hard-coded super-Gaussian aneurysm insult, so existing inputs are unchanged.
+  set_parameter("insult_profile", std::string("gaussian"), !required, insult_profile);
+  set_parameter("insult_mag", 0.7, !required, insult_mag);
+  set_parameter("insult_z_loc", 0.5, !required, insult_z_loc);
+  set_parameter("insult_z_wid", 0.25, !required, insult_z_wid);
+  set_parameter("insult_z_exp", 2.0, !required, insult_z_exp);
+  set_parameter("insult_asym", true, !required, insult_asym);
+  set_parameter("insult_theta_wid", 0.55, !required, insult_theta_wid);
+  set_parameter("insult_theta_exp", 6.0, !required, insult_theta_exp);
+  set_parameter("insult_file", std::string(""), !required, insult_file);
   set_parameter("KsKi", 0.0, required, KsKi);
   set_parameter("curve", 0.0, required, curve);
   set_parameter("mult", 0.0, required, mult);

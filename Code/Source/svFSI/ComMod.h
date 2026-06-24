@@ -403,6 +403,28 @@ class grModelType
     double load_steep = 2.0;
     std::string load_file = "";
 
+    // Spatial insult profile: the aneurysm weakening (elastin/stimulus
+    // knock-down) at a point is scaled by an axial x azimuthal factor. Set from
+    // the input file so the insult shape can be controlled externally instead of
+    // being hard-coded. Defaults reproduce the historical super-Gaussian insult.
+    //   insult_profile : "gaussian" | "file" (axial shape; azimuth stays gaussian)
+    //   insult_mag     : peak elastin loss fraction (phi_e_hm)
+    //   insult_z_loc   : axial center as a fraction of the tube length
+    //   insult_z_wid   : axial width as a fraction of the tube length
+    //   insult_z_exp   : axial super-Gaussian exponent
+    //   insult_asym    : apply the azimuthal (circumferential) localization
+    //   insult_theta_wid / insult_theta_exp : azimuthal width / exponent
+    //   insult_file    : path to a 2-column (z/lo, f_axi) curve for "file"
+    std::string insult_profile = "gaussian";
+    double insult_mag = 0.7;
+    double insult_z_loc = 0.5;
+    double insult_z_wid = 0.25;
+    double insult_z_exp = 2.0;
+    bool insult_asym = true;
+    double insult_theta_wid = 0.55;
+    double insult_theta_exp = 6.0;
+    std::string insult_file = "";
+
     double KsKi = 0.0;
     double curve = 0.0;
     double mult = 0.0;

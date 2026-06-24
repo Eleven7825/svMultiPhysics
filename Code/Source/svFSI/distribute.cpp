@@ -1226,6 +1226,15 @@ void dist_gr_consts(const ComMod& com_mod, const CmMod& cm_mod, const cmType& cm
   cm.bcast(cm_mod, grM.load_profile);
   cm.bcast(cm_mod, &grM.load_steep);
   cm.bcast(cm_mod, grM.load_file);
+  cm.bcast(cm_mod, grM.insult_profile);
+  cm.bcast(cm_mod, &grM.insult_mag);
+  cm.bcast(cm_mod, &grM.insult_z_loc);
+  cm.bcast(cm_mod, &grM.insult_z_wid);
+  cm.bcast(cm_mod, &grM.insult_z_exp);
+  cm.bcast(cm_mod, &grM.insult_asym);
+  cm.bcast(cm_mod, &grM.insult_theta_wid);
+  cm.bcast(cm_mod, &grM.insult_theta_exp);
+  cm.bcast(cm_mod, grM.insult_file);
   cm.bcast(cm_mod, &grM.KsKi);
   cm.bcast(cm_mod, &grM.curve);
   cm.bcast(cm_mod, &grM.mult);
