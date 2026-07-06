@@ -196,6 +196,7 @@ SeMaterialPropertiesMapType set_material_props = {
   lDmn.grM.insult_theta_wid = params.insult_theta_wid.value();
   lDmn.grM.insult_theta_exp = params.insult_theta_exp.value();
   lDmn.grM.insult_file = params.insult_file.value();
+  lDmn.grM.tau_ratio_floor = params.tau_ratio_floor.value();
   lDmn.grM.KsKi = params.KsKi.value();
   lDmn.grM.curve = params.curve.value();
   lDmn.grM.mult = params.mult.value();

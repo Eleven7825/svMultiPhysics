@@ -531,6 +531,9 @@ class GREquilibratedParameters : public ParameterLists
     Parameter<double> insult_theta_wid;
     Parameter<double> insult_theta_exp;
     Parameter<std::string> insult_file;
+    // Lower clamp on the WSS-stimulus ratio tau/tauo (0 = disabled). Caps
+    // recirculation-driven runaway growth in the NN-FSG loop.
+    Parameter<double> tau_ratio_floor;
     Parameter<double> KsKi;
     Parameter<double> curve;
     Parameter<double> mult;

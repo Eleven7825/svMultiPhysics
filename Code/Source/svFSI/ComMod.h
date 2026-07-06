@@ -425,6 +425,16 @@ class grModelType
     double insult_theta_exp = 6.0;
     std::string insult_file = "";
 
+    // Lower clamp on the WSS-stimulus ratio tau/tauo used in the G&R growth
+    // response. In a developed aneurysm bulge the luminal WSS can collapse
+    // toward zero (flow recirculation); an accurate fluid/WSS surrogate then
+    // drives tau/tauo -> 0, which saturates the growth stimulus and produces
+    // runaway growth that the partitioned FSG coupling cannot integrate. A
+    // positive floor caps how far collapsed WSS can drive growth (a saturating
+    // vasoactive/remodeling response). Default 0.0 disables clamping, so results
+    // are bit-identical to the historical behavior (and the gr unit test).
+    double tau_ratio_floor = 0.0;
+
     double KsKi = 0.0;
     double curve = 0.0;
     double mult = 0.0;

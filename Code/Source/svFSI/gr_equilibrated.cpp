@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <string>
 #include <vector>
@@ -716,6 +717,21 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
       tau_ratio = tau / tauo;
     else
       tau_ratio = pow(rIrIo, -3);
+
+    // Floor the WSS-stimulus ratio so a collapsed luminal WSS (flow
+    // recirculation in a developed bulge, tau/tauo -> 0) cannot saturate the
+    // growth stimulus into runaway growth that the partitioned FSG coupling
+    // cannot integrate. Disabled by default (floor 0) -> bit-identical results.
+    if (grM.tau_ratio_floor > 0.0 && tau_ratio < grM.tau_ratio_floor) {
+      static bool floor_fired = false;
+      if (!floor_fired) {
+        std::cout << "[gr_equilibrated] tau_ratio_floor ACTIVE: clamped tau/tauo "
+                  << tau_ratio << " -> " << grM.tau_ratio_floor
+                  << " (first occurrence; further clamps silent)" << std::endl;
+        floor_fired = true;
+      }
+      tau_ratio = grM.tau_ratio_floor;
+    }
 
     mat3ds sNm = phim * smo; // phim*smhato = phim*smo
     mat3ds sNc = phic * sco; // phic*schato = phic*sco

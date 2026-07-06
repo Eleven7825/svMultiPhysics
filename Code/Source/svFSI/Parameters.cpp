@@ -755,6 +755,9 @@ GREquilibratedParameters::GREquilibratedParameters()
   set_parameter("insult_theta_wid", 0.55, !required, insult_theta_wid);
   set_parameter("insult_theta_exp", 6.0, !required, insult_theta_exp);
   set_parameter("insult_file", std::string(""), !required, insult_file);
+  // Lower clamp on tau/tauo in the G&R growth stimulus (0 = disabled). Caps
+  // recirculation-driven runaway growth; default reproduces historical results.
+  set_parameter("tau_ratio_floor", 0.0, !required, tau_ratio_floor);
   set_parameter("KsKi", 0.0, required, KsKi);
   set_parameter("curve", 0.0, required, curve);
   set_parameter("mult", 0.0, required, mult);
