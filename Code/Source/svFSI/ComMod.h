@@ -1579,6 +1579,15 @@ class ComMod {
     /// @brief Restart file name
     std::string stFileName;
 
+    /// @brief Explicit restart input/output paths (from the --restart-in /
+    /// --restart-out CLI flags). When set, the solver reads exactly
+    /// restartInName (instead of stFileName + "_last.bin") and writes exactly
+    /// restartOutName (instead of the numbered stFileName_<cTS>.bin + _last
+    /// hardlink). This lets a partitioned driver re-solve a load step from an
+    /// exact checkpoint without the solver auto-selecting "_last"/highest cTS.
+    std::string restartInName;
+    std::string restartOutName;
+
     /// @brief Stop_trigger file name
     std::string stopTrigName;
 

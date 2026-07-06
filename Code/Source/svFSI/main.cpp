@@ -670,8 +670,9 @@ void run_simulation(Simulation* simulation)
 //
 int main(int argc, char *argv[])
 {
-  if (argc != 2) {
+  if (argc < 2) {
     std::cout << "[svFSIplus:ERROR] The svFSIplus program requires the solver input XML file name as an argument." << std::endl;
+    std::cout << "[svFSIplus] Usage: svFSI <input.xml> [--restart-in <path>] [--restart-out <path>]" << std::endl;
     exit(1);
   }
 
@@ -695,6 +696,21 @@ int main(int argc, char *argv[])
   auto& cm = simulation->com_mod.cm;
   std::string file_name(argv[1]);
 
+  // Optional explicit restart paths. These let a partitioned driver re-solve a
+  // load step from an exact checkpoint: the solver reads exactly --restart-in
+  // (never auto-selecting "_last"/highest cTS) and writes exactly --restart-out.
+  // argv is identical on every MPI rank, so parse on all ranks (no bcast needed).
+  for (int i = 2; i < argc; i++) {
+    std::string arg(argv[i]);
+    if ((arg == "--restart-in" || arg == "--restart_in") && i + 1 < argc) {
+      simulation->com_mod.restartInName = argv[++i];
+    } else if ((arg == "--restart-out" || arg == "--restart_out") && i + 1 < argc) {
+      simulation->com_mod.restartOutName = argv[++i];
+    } else if (cm.mas(simulation->cm_mod)) {
+      std::cout << "[svFSIplus] WARNING: ignoring unrecognized argument '" << arg << "'" << std::endl;
+    }
+  }
+
   #define n_debug_main
   #ifdef debug_main
   DebugMsg dmsg(__func__, cm.idcm());
@@ -711,6 +727,13 @@ int main(int argc, char *argv[])
     dmsg << "Read files " << " ... ";
     #endif
     read_files(simulation, file_name);
+
+    // An explicit --restart-in path forces restart mode regardless of the
+    // <Continue_previous_simulation> XML value. Set on the master before
+    // distribute() so stFileFlag is broadcast consistently.
+    if (!simulation->com_mod.restartInName.empty()) {
+      simulation->com_mod.stFileFlag = true;
+    }
 
     // Distribute data to processors.
     #ifdef debug_main

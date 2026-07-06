@@ -35,6 +35,7 @@
 #include "utils.h"
 
 #include <math.h>
+#include <sys/stat.h>
 
 namespace output {
 
@@ -232,6 +233,10 @@ void write_restart(Simulation* simulation, std::array<double,3>& timeP)
   int fid = 27;
   int myID = cm.tF(cm_mod);
 
+  // When the driver gives an explicit --restart-out path, write exactly there
+  // and skip the numbered-file + "_last" hardlink bookkeeping.
+  const bool explicit_out = !com_mod.restartOutName.empty();
+
   auto fName = stFileName + "_last.bin";
   auto tmpS = fName;
   #ifdef debug_write_restart
@@ -248,7 +253,9 @@ void write_restart(Simulation* simulation, std::array<double,3>& timeP)
   std::cout;
   #endif 
 
-  if (!com_mod.stFileRepl) {
+  if (explicit_out) {
+    fName = com_mod.restartOutName;
+  } else if (!com_mod.stFileRepl) {
     char fName_num[100];
     if (cTS >= 1000) {
       sprintf(fName_num, "%d", cTS);
@@ -340,9 +347,16 @@ void write_restart(Simulation* simulation, std::array<double,3>& timeP)
 
   restart_file.close();
 
-  // Create a soft link to the bin file for the last time step.
+  // Create a soft link to the bin file for the last time step. Skipped when an
+  // explicit --restart-out path was given (the driver names every file).
   //
-  if (!com_mod.stFileRepl && cm.mas(cm_mod)) {
+  if (explicit_out) {
+    // Make the restart file group/world-writable so a non-root host driver can
+    // snapshot/overwrite it even when the solver runs as root in a container.
+    if (cm.mas(cm_mod)) {
+      chmod(fName.c_str(), 0666);
+    }
+  } else if (!com_mod.stFileRepl && cm.mas(cm_mod)) {
     std::string cmd = "ln -f " + fName + " " + tmpS;
     std::system(cmd.c_str());
   }

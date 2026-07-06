@@ -679,7 +679,11 @@ void initialize(Simulation* simulation, Vector<double>& timeP)
 
     } else {
       if (com_mod.stFileFlag) {
-        std::string fTmp = com_mod.stFileName + "_last.bin";
+        // Read exactly the driver-specified restart file when --restart-in is
+        // given; otherwise fall back to the auto-selected "_last.bin".
+        std::string fTmp = com_mod.restartInName.empty()
+                               ? (com_mod.stFileName + "_last.bin")
+                               : com_mod.restartInName;
 
         if (FILE *file = fopen(fTmp.c_str(), "r")) {
           fclose(file);
