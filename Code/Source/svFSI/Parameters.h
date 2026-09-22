@@ -40,6 +40,7 @@
 #include <sstream>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -150,6 +151,23 @@ class Parameter
     /// @brief Set the parameter value from a string.
     void set(const std::string& str_value)
     {
+      if constexpr (std::is_same<T, std::string>::value) {
+        // Unlike the scalar (bool/int/double) specializations below, a
+        // std::string parameter's raw text may legitimately contain
+        // internal whitespace/newlines that must be preserved verbatim
+        // (e.g. a multi-statement exprtk expression spanning several
+        // lines for readability -- see Wall_reduction_update_expr).
+        // Trim only leading/trailing whitespace; do NOT route through
+        // "istringstream >> value_" below, which silently truncates the
+        // value at the first whitespace character it finds -- a
+        // pre-existing bug for any multi-word/multi-line string parameter.
+        auto first = str_value.find_first_not_of(" \t\r\n");
+        auto last = str_value.find_last_not_of(" \t\r\n");
+        value_ = (first == std::string::npos) ? "" : str_value.substr(first, last - first + 1);
+        value_set_ = true;
+        return;
+      }
+
       if (str_value == "") {
         value_ = T{0};
       }
@@ -1288,10 +1306,22 @@ class GeneralSimulationParameters : public ParameterLists
     Parameter<int> number_of_new_time_steps;
 
     Parameter<std::string> name_prefix_of_saved_vtk_files;
-    Parameter<std::string> restart_file_name; 
-    Parameter<std::string> searched_file_name_to_trigger_stop; 
-    Parameter<std::string> save_results_in_folder; 
-    Parameter<std::string> simulation_initialization_file_path; 
+    Parameter<std::string> restart_file_name;
+    Parameter<std::string> searched_file_name_to_trigger_stop;
+    Parameter<std::string> save_results_in_folder;
+    Parameter<std::string> simulation_initialization_file_path;
+
+    // Wall shear stress time-domain reduction accumulator (opt-in; see
+    // wss_reduction.h). Computes a per-node WSS statistic on-the-fly over the
+    // final Wall_reduction_cycle_steps timesteps of each solver invocation,
+    // via a runtime-configurable exprtk expression pair, instead of writing
+    // one VTU per timestep for downstream Python-side reduction.
+    Parameter<bool> wall_reduction_enabled;
+    Parameter<std::string> wall_reduction_face_name;
+    Parameter<int> wall_reduction_cycle_steps;
+    Parameter<std::string> wall_reduction_update_expr;
+    Parameter<std::string> wall_reduction_finalize_expr;
+    Parameter<std::string> wall_reduction_output_file_path;
 };
 
 /// @brief The FaceParameters class is used to store parameters for the

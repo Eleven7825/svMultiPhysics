@@ -1274,6 +1274,39 @@ class rmshType
     std::vector<bool> flag;
 };
 
+/// @brief Configuration for the on-the-fly wall-shear-stress time-domain
+/// reduction accumulator (see wss_reduction.h). Plain config only -- the
+/// exprtk-based Accumulator object itself is owned by Simulation, not
+/// ComMod, to keep exprtk.hpp's compile cost out of this header, which is
+/// included nearly everywhere.
+class WssReductionType
+{
+  public:
+    /// @brief Master opt-in switch. Default off; existing behavior is
+    /// unchanged when false.
+    bool enabled = false;
+
+    /// @brief Name of the face (Add_face) to compute/reduce WSS over.
+    std::string faceName;
+
+    /// @brief Number of trailing timesteps of each invocation's new-step
+    /// batch to accumulate over (mirrors the FSG Python driver's
+    /// n_reduction_steps / one cardiac cycle).
+    int cycleSteps = 0;
+
+    /// @brief exprtk expression evaluated once per node per accumulated
+    /// timestep; mutates the persistent state variables (sum/minv/maxv/n).
+    std::string updateExpr;
+
+    /// @brief exprtk expression evaluated once per node at invocation end;
+    /// turns accumulated state into the output value.
+    std::string finalizeExpr;
+
+    /// @brief Output .vtp path (relative to chnl_mod.appPath), overwritten
+    /// every invocation.
+    std::string outputFilePath;
+};
+
 class ibCommType
 {
   public:
@@ -1717,6 +1750,9 @@ class ComMod {
 
     /// @brief Remesher type
     rmshType rmsh;
+
+    /// @brief Wall shear stress time-domain reduction accumulator config
+    WssReductionType wssRed;
 
     /// @brief Contact model type
     cntctModelType cntctM;

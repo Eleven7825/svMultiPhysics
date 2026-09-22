@@ -34,6 +34,7 @@
 #include "ComMod.h"
 #include "Parameters.h"
 #include "SimulationLogger.h"
+#include "wss_reduction.h"
 
 #include <string>
 
@@ -69,6 +70,11 @@ class Simulation {
 
     // Log solution information.
     SimulationLogger logger;
+
+    // On-the-fly wall-shear-stress time-domain reduction accumulator (see
+    // wss_reduction.h). Owned here, not on ComMod, to keep exprtk.hpp's
+    // compile cost out of ComMod.h, which is included nearly everywhere.
+    wss_reduction::Accumulator wssReducer;
 
     // Number of time steps
     int nTs;

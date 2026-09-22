@@ -148,6 +148,8 @@ void VtkVtpData::VtkVtpDataImpl::set_connectivity(const int nsd, const Array<int
   
   if (np_elem == 2) {
     vtk_cell_type = VTK_LINE;
+  } else if (np_elem == 1) {
+    vtk_cell_type = VTK_VERTEX;
   }
 
   auto elem_nodes = vtkSmartPointer<vtkIdList>::New();
@@ -356,6 +358,8 @@ void VtkVtuData::VtkVtuDataImpl::set_connectivity(const int nsd, const Array<int
   
   if (np_elem == 2) {
     vtk_cell_type = VTK_LINE;
+  } else if (np_elem == 1) {
+    vtk_cell_type = VTK_VERTEX;
   }
 
   auto elem_nodes = vtkSmartPointer<vtkIdList>::New();

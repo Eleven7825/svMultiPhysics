@@ -335,6 +335,22 @@ void distribute(Simulation* simulation)
       cm.bcast(cm_mod, rmsh.maxEdgeSize);
     }
 
+    // Only master reads/parses the XML (see read_files() above); every
+    // other ComMod field derived from GeneralSimulationParameters is
+    // broadcast in this same block, so wssRed must be too, or non-master
+    // ranks silently keep their default-constructed (disabled) values --
+    // which desyncs the per-timestep wss_reduction::Accumulator hook
+    // across ranks and deadlocks the collective MPI reduction inside
+    // post::bpost() the first time a master-only rank calls it alone.
+    cm.bcast(cm_mod, &com_mod.wssRed.enabled);
+    if (com_mod.wssRed.enabled) {
+      cm.bcast(cm_mod, com_mod.wssRed.faceName);
+      cm.bcast(cm_mod, &com_mod.wssRed.cycleSteps);
+      cm.bcast(cm_mod, com_mod.wssRed.updateExpr);
+      cm.bcast(cm_mod, com_mod.wssRed.finalizeExpr);
+      cm.bcast(cm_mod, com_mod.wssRed.outputFilePath);
+    }
+
     cm.bcast(cm_mod, &com_mod.iCntct);
 
     if (com_mod.iCntct) {

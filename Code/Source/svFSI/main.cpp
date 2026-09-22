@@ -530,6 +530,9 @@ void iterate_solution(Simulation* simulation)
 
     txt_ns::txt(simulation, false);
 
+    // No-op unless Wall_reduction_enabled is set in the solver input XML.
+    simulation->wssReducer.update_from_solution(simulation);
+
     // If remeshing is required then save current solution.
     //
     if (com_mod.rmsh.isReqd) {
@@ -661,7 +664,13 @@ void iterate_solution(Simulation* simulation)
 
 void run_simulation(Simulation* simulation)
 {
+  // No-op unless Wall_reduction_enabled is set in the solver input XML.
+  simulation->wssReducer.init(simulation);
+
   iterate_solution(simulation);
+
+  // No-op unless Wall_reduction_enabled is set in the solver input XML.
+  simulation->wssReducer.finalize_and_write(simulation);
 }
 
 

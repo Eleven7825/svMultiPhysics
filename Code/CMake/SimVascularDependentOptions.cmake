@@ -98,3 +98,8 @@ endif()
 # febio (to be replaced by internal functions)
 set(SV_FEBIO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/febio/")
 include_directories(${SV_FEBIO_DIR})
+
+#-----------------------------------------------------------------------------
+# exprtk (header-only; used by the wall-shear-stress reduction accumulator)
+set(SV_EXPRTK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/exprtk/")
+include_directories(${SV_EXPRTK_DIR})

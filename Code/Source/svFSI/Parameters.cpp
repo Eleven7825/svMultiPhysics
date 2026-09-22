@@ -1896,6 +1896,19 @@ GeneralSimulationParameters::GeneralSimulationParameters()
 
   set_parameter("Verbose", false, !required, verbose);
   set_parameter("Warning", false, !required, warning);
+
+  // Wall shear stress time-domain reduction accumulator (opt-in, default off).
+  // Face_name/update_expr/finalize_expr are conditionally required (only when
+  // enabled) and validated in wss_reduction::Accumulator::init(), not here,
+  // since set_parameter()'s required flag can't express "required if X".
+  set_parameter("Wall_reduction_enabled", false, !required, wall_reduction_enabled);
+  set_parameter("Wall_reduction_face_name", "", !required, wall_reduction_face_name);
+  set_parameter("Wall_reduction_cycle_steps", 0, !required, wall_reduction_cycle_steps, {0,int_inf});
+  set_parameter("Wall_reduction_update_expr", "", !required, wall_reduction_update_expr);
+  set_parameter("Wall_reduction_finalize_expr", "", !required, wall_reduction_finalize_expr);
+  // .vtu, not .vtp: VtkVtpData only implements set_point_data() for
+  // Vector<int> (see wss_reduction.cpp), and WSS_reduction is a double field.
+  set_parameter("Wall_reduction_output_file_path", "wss_reduction.vtu", !required, wall_reduction_output_file_path);
 }
 
 void GeneralSimulationParameters::print_parameters()

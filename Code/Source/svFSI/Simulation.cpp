@@ -101,6 +101,13 @@ void Simulation::set_module_parameters()
   com_mod.stFileIncr = general.increment_in_saving_restart_files.value();
   com_mod.rmsh.isReqd = general.simulation_requires_remeshing.value();
 
+  com_mod.wssRed.enabled = general.wall_reduction_enabled.value();
+  com_mod.wssRed.faceName = general.wall_reduction_face_name.value();
+  com_mod.wssRed.cycleSteps = general.wall_reduction_cycle_steps.value();
+  com_mod.wssRed.updateExpr = general.wall_reduction_update_expr.value();
+  com_mod.wssRed.finalizeExpr = general.wall_reduction_finalize_expr.value();
+  com_mod.wssRed.outputFilePath = chnl_mod.appPath + general.wall_reduction_output_file_path.value();
+
   // Set simulation parameters.
   nTs = general.number_of_time_steps.value();
   fTmp = general.simulation_initialization_file_path.value();
