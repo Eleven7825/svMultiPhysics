@@ -596,6 +596,8 @@ void iterate_solution(Simulation* simulation)
     // Saving the result to restart bin file
     if (l1 || l2) {
        output::write_restart(simulation, com_mod.timeP);
+       // No-op unless Wall_reduction_enabled is set in the solver input XML.
+       simulation->wssReducer.write_restart_sidecar(simulation);
     }
 
     // Writing results into the disk with VTU format

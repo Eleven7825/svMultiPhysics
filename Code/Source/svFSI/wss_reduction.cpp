@@ -7,11 +7,39 @@
 #include "post.h"
 #include "VtkData.h"
 
+#include "mpi.h"
+
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <stdexcept>
 
 namespace wss_reduction {
+
+namespace {
+
+// Fixed, arbitrary 4-byte tag identifying a wss_reduction restart sidecar
+// file, so a corrupt/foreign file at the same path is rejected (falls back
+// to a fresh window) instead of being misread as valid state.
+constexpr int kSidecarMagic = 0x57535231; // "WSR1", ASCII-ish
+constexpr int kSidecarVersion = 1;
+
+// One rank's fixed-length record in <stFileName>_wss_reduction.bin, at
+// offset (rank_id * recLn) -- recLn is the MAX of every rank's own record
+// size (via MPI_Allreduce), exactly mirroring output::write_restart() /
+// initialize::init_from_bin()'s own per-rank-record convention
+// (output.cpp:233-285, initialize.cpp:118-121), so no MPI gather/scatter
+// of the actual per-node state is ever needed: each rank already owns a
+// stable mesh partition, so it can write/read its own slice directly.
+struct SidecarHeader
+{
+  int magic = 0;
+  int version = 0;
+  int windowStartCTS = 0;
+  int nNodes = 0;
+};
+
+} // namespace
 
 struct Accumulator::ExprtkState
 {
@@ -151,6 +179,112 @@ void Accumulator::init(Simulation* simulation)
   // computed once, before the outer loop begins.
   stopTS_ = std::max(com_mod.nTS, com_mod.cTS + com_mod.newTS);
   windowStartCTS_ = stopTS_ - wssRed.cycleSteps + 1;
+
+  // Reset-vs-continue rule: a fresh start (stFileFlag false, including the
+  // case where <Continue_previous_simulation> was true but initialize()
+  // found no restart bin to actually load from, which resets the flag
+  // itself -- see initialize.cpp:692-698) always keeps the zeroed state
+  // init_core() just set up. Only a genuine continuation attempts to load
+  // the sidecar, and even then only a window-matching sidecar is used (see
+  // load_restart_sidecar()); anything else silently falls back to zeroed
+  // state, which is exactly the correct behavior for a new window.
+  if (com_mod.stFileFlag) {
+    load_restart_sidecar(simulation);
+  }
+}
+
+bool Accumulator::load_restart_sidecar(Simulation* simulation)
+{
+  auto& com_mod = simulation->com_mod;
+  auto& cm = com_mod.cm;
+  auto& cm_mod = simulation->cm_mod;
+
+  std::string sidecarPath = com_mod.stFileName + "_wss_reduction.bin";
+
+  int mySize = static_cast<int>(sizeof(SidecarHeader)) + state_.msize();
+  int recLn = 0;
+  MPI_Allreduce(&mySize, &recLn, 1, cm_mod::mpint, MPI_MAX, cm.com());
+
+  std::ifstream in(sidecarPath, std::ios::binary | std::ios::in);
+  if (!in) {
+    return false;
+  }
+
+  int processId = cm.tF(cm_mod);
+  std::streampos readPos = static_cast<std::streampos>(processId - 1) * recLn;
+  in.seekg(readPos);
+
+  SidecarHeader onDisk;
+  in.read(reinterpret_cast<char*>(&onDisk), sizeof(SidecarHeader));
+  if (!in || onDisk.magic != kSidecarMagic || onDisk.version != kSidecarVersion) {
+    return false;
+  }
+  // A mismatched node count means the mesh/partition changed since this
+  // sidecar was written (e.g. a re-meshed or regenerated fluid.vtu) --
+  // unsafe to trust its per-node state, which is implicitly keyed by
+  // local node index.
+  if (onDisk.nNodes != nNodes_) {
+    return false;
+  }
+  // Anything other than an exact window match means this sidecar is from
+  // a different (earlier) accumulation window -- e.g. the normal case of
+  // a new FSG coupling invocation opening a new window, not a
+  // crash-recovery resume inside the same one.
+  if (onDisk.windowStartCTS != windowStartCTS_) {
+    return false;
+  }
+
+  in.read(reinterpret_cast<char*>(state_.data()), state_.msize());
+  if (!in) {
+    return false;
+  }
+
+  return true;
+}
+
+void Accumulator::write_restart_sidecar(Simulation* simulation)
+{
+  if (!enabled_) {
+    return;
+  }
+
+  auto& com_mod = simulation->com_mod;
+  auto& cm = com_mod.cm;
+  auto& cm_mod = simulation->cm_mod;
+
+  std::string sidecarPath = com_mod.stFileName + "_wss_reduction.bin";
+
+  SidecarHeader hdr;
+  hdr.magic = kSidecarMagic;
+  hdr.version = kSidecarVersion;
+  hdr.windowStartCTS = windowStartCTS_;
+  hdr.nNodes = nNodes_;
+
+  int mySize = static_cast<int>(sizeof(SidecarHeader)) + state_.msize();
+  int recLn = 0;
+  MPI_Allreduce(&mySize, &recLn, 1, cm_mod::mpint, MPI_MAX, cm.com());
+
+  // Master creates/truncates the shared file first, then every rank
+  // (including master) reopens it and writes its own record at its own
+  // offset -- mirrors output::write_restart()'s own create-then-block-
+  // then-each-rank-writes pattern exactly (output.cpp:270-285).
+  if (cm.mas(cm_mod)) {
+    std::ofstream trunc(sidecarPath, std::ios::out | std::ios::binary);
+    trunc.close();
+  }
+
+  // Blocks every rank until master's truncate above has completed, so no
+  // rank races ahead and reopens the file before it exists.
+  int fid = 0;
+  cm.bcast(cm_mod, &fid);
+
+  std::fstream out(sidecarPath, std::ios::in | std::ios::out | std::ios::binary);
+  int processId = cm.tF(cm_mod);
+  std::streampos writePos = static_cast<std::streampos>(processId - 1) * recLn;
+  out.seekp(writePos);
+  out.write(reinterpret_cast<const char*>(&hdr), sizeof(SidecarHeader));
+  out.write(reinterpret_cast<const char*>(state_.data()), state_.msize());
+  out.close();
 }
 
 void Accumulator::update_from_solution(Simulation* simulation)

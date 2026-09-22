@@ -67,17 +67,37 @@ class Accumulator
     double output(int local_node_idx) const { return output_(0, local_node_idx); }
     double state(StateRow row, int local_node_idx) const { return state_(row, local_node_idx); }
 
-    /// @brief Simulation-dependent setup for a fresh accumulation window:
-    /// resolves Wall_reduction_face_name to a mesh (via all_fun::find_face),
-    /// throws if it doesn't resolve to face index 0 (post::bpost's own
-    /// hardcoded assumption), validates the other Wall_reduction_* fields
-    /// (conditionally required only when enabled), computes this
-    /// invocation's target stopTS/window-start independently of main.cpp's
-    /// own locals (see main.cpp:100-150 vs. the unrelated STOP_SIM-file
-    /// local shadowing "stopTS" at main.cpp:559), and calls init_core().
-    /// No-op if com_mod.wssRed.enabled is false. Phase 3: always starts a
-    /// fresh window (no restart-continuation sidecar yet).
+    /// @brief Simulation-dependent setup for this invocation's accumulation
+    /// window: resolves Wall_reduction_face_name to a mesh (via
+    /// all_fun::find_face), throws if it doesn't resolve to face index 0
+    /// (post::bpost's own hardcoded assumption), validates the other
+    /// Wall_reduction_* fields (conditionally required only when enabled),
+    /// computes this invocation's target stopTS/window-start independently
+    /// of main.cpp's own locals (see main.cpp:100-150 vs. the unrelated
+    /// STOP_SIM-file local shadowing "stopTS" at main.cpp:559), and calls
+    /// init_core() (which starts state_/output_ zeroed). Then, only when
+    /// continuing a previous simulation (com_mod.stFileFlag) and this
+    /// invocation's windowStartCTS matches a valid <stFileName>_wss_
+    /// reduction.bin sidecar's own stored windowStartCTS (i.e. we are
+    /// resuming a crash *inside* the same still-open window, not starting
+    /// a new one), loads that sidecar's saved per-node state_ over the
+    /// freshly-zeroed one -- see load_restart_sidecar(). No-op (state stays
+    /// zeroed) for every other case: fresh start, no sidecar found, or a
+    /// sidecar whose window doesn't match (the normal case: a new FSG
+    /// coupling invocation opening a new window).
+    /// No-op entirely if com_mod.wssRed.enabled is false.
     void init(Simulation* simulation);
+
+    /// @brief Restart-checkpoint hook, meant to be called alongside the
+    /// existing output::write_restart() (same l1||l2 save cadence, main.cpp
+    /// 594-596). Writes state_ to <stFileName>_wss_reduction.bin, one
+    /// fixed-length record per rank at a rank-specific offset within the
+    /// same shared file -- mirrors output::write_restart()/init_from_bin()'s
+    /// own per-rank-record convention (output.cpp:283-285,
+    /// initialize.cpp:118-121) exactly, so it needs no MPI gather: every
+    /// rank already owns a stable partition, so it can write/read its own
+    /// slice directly. No-op if disabled.
+    void write_restart_sidecar(Simulation* simulation);
 
     /// @brief Per-timestep hook, meant to be called once per converged
     /// timestep (after the Newton loop, alongside the existing per-step
@@ -99,6 +119,14 @@ class Accumulator
     void finalize_and_write(Simulation* simulation);
 
   private:
+    // Attempts to load state_ from <stFileName>_wss_reduction.bin, per the
+    // reset-vs-continue rule documented on init(). Returns true if this
+    // rank's record was found, validated (magic/version/nNodes_ match, and
+    // the sidecar's own stored windowStartCTS equals this invocation's
+    // freshly-computed windowStartCTS_), and loaded; false otherwise (in
+    // which case the caller leaves state_ at its freshly-zeroed value).
+    bool load_restart_sidecar(Simulation* simulation);
+
     int nNodes_ = 0;
     Array<double> state_;   // (NUM_STATE_ROWS, nNodes_)
     Array<double> output_;  // (1, nNodes_)
