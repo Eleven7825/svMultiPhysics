@@ -164,7 +164,7 @@ set(CSRCS
   load_msh.h load_msh.cpp
   pic.h pic.cpp
   post.h post.cpp
-  wss_reduction.h wss_reduction.cpp
+  field_reduction.h field_reduction.cpp field_reduction_sim.cpp
   read_files.h read_files.cpp
   read_msh.h read_msh.cpp
   remesh.h remesh.cpp

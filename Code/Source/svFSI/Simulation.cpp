@@ -35,6 +35,8 @@
 
 #include "mpi.h"
 
+#include <algorithm>
+#include <cctype>
 #include <iostream>
 
 Simulation::Simulation() 
@@ -101,12 +103,33 @@ void Simulation::set_module_parameters()
   com_mod.stFileIncr = general.increment_in_saving_restart_files.value();
   com_mod.rmsh.isReqd = general.simulation_requires_remeshing.value();
 
-  com_mod.wssRed.enabled = general.wall_reduction_enabled.value();
-  com_mod.wssRed.faceName = general.wall_reduction_face_name.value();
-  com_mod.wssRed.cycleSteps = general.wall_reduction_cycle_steps.value();
-  com_mod.wssRed.updateExpr = general.wall_reduction_update_expr.value();
-  com_mod.wssRed.finalizeExpr = general.wall_reduction_finalize_expr.value();
-  com_mod.wssRed.outputFilePath = chnl_mod.appPath + general.wall_reduction_output_file_path.value();
+  for (auto* red_params : parameters.reduction_parameters) {
+    ReductionConfig config;
+    config.name = red_params->name.value();
+    config.field = red_params->field.value();
+    config.scope = red_params->scope.value();
+    config.faceName = red_params->face_name.value();
+    config.meshName = red_params->mesh_name.value();
+    config.mode = red_params->reduction_mode.value();
+    config.cycleSteps = red_params->cycle_steps.value();
+    config.updateExpr = red_params->update_expr.value();
+    config.finalizeExpr = red_params->finalize_expr.value();
+
+    // Empty Output_file_path defaults to lower(field)+"_reduction.vtu",
+    // resolved here (rather than in field_reduction::Accumulator::init())
+    // to match how every other path-valued field on this struct is built,
+    // right alongside the chnl_mod.appPath prefix it needs.
+    std::string out_basename = red_params->output_file_path.value();
+    if (out_basename.empty()) {
+      std::string field_lower = config.field;
+      std::transform(field_lower.begin(), field_lower.end(), field_lower.begin(),
+          [](unsigned char c) { return std::tolower(c); });
+      out_basename = field_lower + "_reduction.vtu";
+    }
+    config.outputFilePath = chnl_mod.appPath + out_basename;
+
+    com_mod.reductions.push_back(config);
+  }
 
   // Set simulation parameters.
   nTs = general.number_of_time_steps.value();

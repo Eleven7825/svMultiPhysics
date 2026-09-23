@@ -34,9 +34,10 @@
 #include "ComMod.h"
 #include "Parameters.h"
 #include "SimulationLogger.h"
-#include "wss_reduction.h"
+#include "field_reduction.h"
 
 #include <string>
+#include <vector>
 
 class Simulation {
 
@@ -71,10 +72,14 @@ class Simulation {
     // Log solution information.
     SimulationLogger logger;
 
-    // On-the-fly wall-shear-stress time-domain reduction accumulator (see
-    // wss_reduction.h). Owned here, not on ComMod, to keep exprtk.hpp's
-    // compile cost out of ComMod.h, which is included nearly everywhere.
-    wss_reduction::Accumulator wssReducer;
+    // On-the-fly time-domain reduction accumulators, one per <Add_reduction>
+    // XML block (see field_reduction.h). Owned here, not on ComMod, to keep
+    // exprtk.hpp's compile cost out of ComMod.h, which is included nearly
+    // everywhere. Raw owning pointers, matching this codebase's own
+    // established style for parsed-config lists (e.g.
+    // Parameters::mesh_parameters) -- avoids the move-semantics question a
+    // custom-destructor class raises in a std::vector<Accumulator> by value.
+    std::vector<field_reduction::Accumulator*> fieldReducers;
 
     // Number of time steps
     int nTs;

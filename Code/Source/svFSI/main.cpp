@@ -530,8 +530,8 @@ void iterate_solution(Simulation* simulation)
 
     txt_ns::txt(simulation, false);
 
-    // No-op unless Wall_reduction_enabled is set in the solver input XML.
-    simulation->wssReducer.update_from_solution(simulation);
+    // No-op unless the solver input XML has any <Add_reduction> blocks.
+    field_reduction::update_all(simulation);
 
     // If remeshing is required then save current solution.
     //
@@ -596,8 +596,8 @@ void iterate_solution(Simulation* simulation)
     // Saving the result to restart bin file
     if (l1 || l2) {
        output::write_restart(simulation, com_mod.timeP);
-       // No-op unless Wall_reduction_enabled is set in the solver input XML.
-       simulation->wssReducer.write_restart_sidecar(simulation);
+       // No-op unless the solver input XML has any <Add_reduction> blocks.
+       field_reduction::write_restart_all(simulation);
     }
 
     // Writing results into the disk with VTU format
@@ -666,13 +666,13 @@ void iterate_solution(Simulation* simulation)
 
 void run_simulation(Simulation* simulation)
 {
-  // No-op unless Wall_reduction_enabled is set in the solver input XML.
-  simulation->wssReducer.init(simulation);
+  // No-op unless the solver input XML has any <Add_reduction> blocks.
+  field_reduction::init_all(simulation);
 
   iterate_solution(simulation);
 
-  // No-op unless Wall_reduction_enabled is set in the solver input XML.
-  simulation->wssReducer.finalize_and_write(simulation);
+  // No-op unless the solver input XML has any <Add_reduction> blocks.
+  field_reduction::finalize_and_write_all(simulation);
 }
 
 

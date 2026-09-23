@@ -1310,18 +1310,47 @@ class GeneralSimulationParameters : public ParameterLists
     Parameter<std::string> searched_file_name_to_trigger_stop;
     Parameter<std::string> save_results_in_folder;
     Parameter<std::string> simulation_initialization_file_path;
+};
 
-    // Wall shear stress time-domain reduction accumulator (opt-in; see
-    // wss_reduction.h). Computes a per-node WSS statistic on-the-fly over the
-    // final Wall_reduction_cycle_steps timesteps of each solver invocation,
-    // via a runtime-configurable exprtk expression pair, instead of writing
-    // one VTU per timestep for downstream Python-side reduction.
-    Parameter<bool> wall_reduction_enabled;
-    Parameter<std::string> wall_reduction_face_name;
-    Parameter<int> wall_reduction_cycle_steps;
-    Parameter<std::string> wall_reduction_update_expr;
-    Parameter<std::string> wall_reduction_finalize_expr;
-    Parameter<std::string> wall_reduction_output_file_path;
+/// @brief The ReductionParameters class stores parameters for one
+/// repeatable 'Add_reduction' XML element -- one on-the-fly, per-node
+/// time-domain reduction accumulator (see field_reduction.h). Computes a
+/// per-node statistic on the fly over the final Cycle_steps timesteps of
+/// each solver invocation, via a runtime-configurable exprtk expression
+/// pair, instead of writing one VTU per timestep for downstream
+/// Python-side reduction.
+/// \code {.xml}
+/// <Add_reduction name="wss_reduction">
+///   <Field> WSS </Field>
+///   <Scope> face </Scope>
+///   <Face_name> f_interface </Face_name>
+///   <Reduction_mode> magnitude </Reduction_mode>
+///   <Cycle_steps> 50 </Cycle_steps>
+///   <Update_expr> n := n + 1; val_sum := val_sum + val; </Update_expr>
+///   <Finalize_expr> val_sum / n </Finalize_expr>
+///   <Output_file_path> wss_reduction.vtu </Output_file_path>
+/// </Add_reduction>
+/// \endcode
+class ReductionParameters : public ParameterLists
+{
+  public:
+    ReductionParameters();
+
+    void set_values(tinyxml2::XMLElement* xml_elem);
+
+    static const std::string xml_element_name_;
+
+    Parameter<std::string> name;
+
+    Parameter<std::string> field;
+    Parameter<std::string> scope;
+    Parameter<std::string> face_name;
+    Parameter<std::string> mesh_name;
+    Parameter<std::string> reduction_mode;
+    Parameter<int> cycle_steps;
+    Parameter<std::string> update_expr;
+    Parameter<std::string> finalize_expr;
+    Parameter<std::string> output_file_path;
 };
 
 /// @brief The FaceParameters class is used to store parameters for the
@@ -1429,6 +1458,7 @@ class Parameters {
     void set_equation_values(tinyxml2::XMLElement* root_element);
     void set_mesh_values(tinyxml2::XMLElement* root_element);
     void set_projection_values(tinyxml2::XMLElement* root_element);
+    void set_reduction_values(tinyxml2::XMLElement* root_element);
 
     // Objects representing each parameter section of XML file.
     ContactParameters contact_parameters;
@@ -1436,6 +1466,7 @@ class Parameters {
     std::vector<MeshParameters*> mesh_parameters;
     std::vector<EquationParameters*> equation_parameters;
     std::vector<ProjectionParameters*> projection_parameters;
+    std::vector<ReductionParameters*> reduction_parameters;
 };
 
 #endif

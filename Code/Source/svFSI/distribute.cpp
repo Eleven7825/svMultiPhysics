@@ -337,18 +337,29 @@ void distribute(Simulation* simulation)
 
     // Only master reads/parses the XML (see read_files() above); every
     // other ComMod field derived from GeneralSimulationParameters is
-    // broadcast in this same block, so wssRed must be too, or non-master
-    // ranks silently keep their default-constructed (disabled) values --
-    // which desyncs the per-timestep wss_reduction::Accumulator hook
-    // across ranks and deadlocks the collective MPI reduction inside
-    // post::bpost() the first time a master-only rank calls it alone.
-    cm.bcast(cm_mod, &com_mod.wssRed.enabled);
-    if (com_mod.wssRed.enabled) {
-      cm.bcast(cm_mod, com_mod.wssRed.faceName);
-      cm.bcast(cm_mod, &com_mod.wssRed.cycleSteps);
-      cm.bcast(cm_mod, com_mod.wssRed.updateExpr);
-      cm.bcast(cm_mod, com_mod.wssRed.finalizeExpr);
-      cm.bcast(cm_mod, com_mod.wssRed.outputFilePath);
+    // broadcast in this same block, so com_mod.reductions must be too, or
+    // non-master ranks silently keep an empty list -- which desyncs the
+    // per-timestep field_reduction::Accumulator hooks across ranks and
+    // deadlocks the collective MPI reduction inside post::bpost() the
+    // first time a master-only rank calls it alone (a real bug, caught and
+    // fixed once already for the single-reduction predecessor of this
+    // list). A variable-length list needs its own count broadcast first.
+    int n_reductions = com_mod.reductions.size();
+    cm.bcast(cm_mod, &n_reductions);
+    if (cm.slv(cm_mod)) {
+      com_mod.reductions.resize(n_reductions);
+    }
+    for (auto& red : com_mod.reductions) {
+      cm.bcast(cm_mod, red.name);
+      cm.bcast(cm_mod, red.field);
+      cm.bcast(cm_mod, red.scope);
+      cm.bcast(cm_mod, red.faceName);
+      cm.bcast(cm_mod, red.meshName);
+      cm.bcast(cm_mod, red.mode);
+      cm.bcast(cm_mod, &red.cycleSteps);
+      cm.bcast(cm_mod, red.updateExpr);
+      cm.bcast(cm_mod, red.finalizeExpr);
+      cm.bcast(cm_mod, red.outputFilePath);
     }
 
     cm.bcast(cm_mod, &com_mod.iCntct);

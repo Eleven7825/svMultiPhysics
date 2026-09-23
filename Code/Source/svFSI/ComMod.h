@@ -1274,35 +1274,58 @@ class rmshType
     std::vector<bool> flag;
 };
 
-/// @brief Configuration for the on-the-fly wall-shear-stress time-domain
-/// reduction accumulator (see wss_reduction.h). Plain config only -- the
-/// exprtk-based Accumulator object itself is owned by Simulation, not
-/// ComMod, to keep exprtk.hpp's compile cost out of this header, which is
-/// included nearly everywhere.
-class WssReductionType
+/// @brief Configuration for one on-the-fly time-domain reduction
+/// accumulator (see field_reduction.h), populated from one repeatable
+/// <Add_reduction> XML block. Plain config only -- the exprtk-based
+/// Accumulator object itself is owned by Simulation, not ComMod, to keep
+/// exprtk.hpp's compile cost out of this header, which is included nearly
+/// everywhere.
+class ReductionConfig
 {
   public:
-    /// @brief Master opt-in switch. Default off; existing behavior is
-    /// unchanged when false.
-    bool enabled = false;
+    /// @brief The block's own name= attribute (used for the restart
+    /// sidecar filename and error messages; NOT the output point-data
+    /// array name, which is always "<field>_reduction").
+    std::string name;
 
-    /// @brief Name of the face (Add_face) to compute/reduce WSS over.
+    /// @brief Which physical field to reduce: "WSS" | "Velocity" | "Pressure".
+    std::string field;
+
+    /// @brief Where the field is extracted from: "face" (via post::bpost,
+    /// WSS only) | "volume" (directly from com_mod.Yn, Velocity/Pressure
+    /// only).
+    std::string scope;
+
+    /// @brief Name of the face (Add_face) to compute/reduce over. Required
+    /// iff scope == "face".
     std::string faceName;
+
+    /// @brief Name of the mesh (Add_mesh) to compute/reduce over. Optional
+    /// iff scope == "volume" and there is exactly one mesh (defaults to
+    /// it); required if there is more than one.
+    std::string meshName;
+
+    /// @brief How multiple field components are combined before reduction:
+    /// "magnitude" (norm first, 1 channel) | "componentwise" (each
+    /// component reduced independently, nsd channels for a vector field,
+    /// 1 for a scalar one).
+    std::string mode;
 
     /// @brief Number of trailing timesteps of each invocation's new-step
     /// batch to accumulate over (mirrors the FSG Python driver's
     /// n_reduction_steps / one cardiac cycle).
     int cycleSteps = 0;
 
-    /// @brief exprtk expression evaluated once per node per accumulated
-    /// timestep; mutates the persistent state variables (sum/minv/maxv/n).
+    /// @brief exprtk expression evaluated once per node per channel per
+    /// accumulated timestep; mutates the persistent state variables
+    /// (val_sum/minv/maxv/n).
     std::string updateExpr;
 
-    /// @brief exprtk expression evaluated once per node at invocation end;
-    /// turns accumulated state into the output value.
+    /// @brief exprtk expression evaluated once per node per channel at
+    /// invocation end; turns accumulated state into the output value.
     std::string finalizeExpr;
 
-    /// @brief Output .vtp path (relative to chnl_mod.appPath), overwritten
+    /// @brief Output .vtu path (relative to chnl_mod.appPath), overwritten
     /// every invocation.
     std::string outputFilePath;
 };
@@ -1751,8 +1774,9 @@ class ComMod {
     /// @brief Remesher type
     rmshType rmsh;
 
-    /// @brief Wall shear stress time-domain reduction accumulator config
-    WssReductionType wssRed;
+    /// @brief On-the-fly time-domain reduction accumulator configs, one
+    /// per <Add_reduction> XML block (see field_reduction.h).
+    std::vector<ReductionConfig> reductions;
 
     /// @brief Contact model type
     cntctModelType cntctM;

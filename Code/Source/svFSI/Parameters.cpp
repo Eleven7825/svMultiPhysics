@@ -161,6 +161,9 @@ void Parameters::read_xml(std::string file_name)
   // Set mesh projection parameters.
   set_projection_values(root_element);
 
+  // Set Add_reduction values.
+  set_reduction_values(root_element);
+
   // Set Add_equation values.
   set_equation_values(root_element);
 }
@@ -224,6 +227,23 @@ void Parameters::set_projection_values(tinyxml2::XMLElement* root_element)
     projection_parameters.push_back(proj_params);
 
     add_proj_item = add_proj_item->NextSiblingElement(ProjectionParameters::xml_element_name_.c_str());
+  }
+}
+
+void Parameters::set_reduction_values(tinyxml2::XMLElement* root_element)
+{
+  auto add_red_item = root_element->FirstChildElement(ReductionParameters::xml_element_name_.c_str());
+
+  while (add_red_item) {
+    const char* red_name;
+    auto result = add_red_item->QueryStringAttribute("name", &red_name);
+
+    ReductionParameters* red_params = new ReductionParameters();
+    red_params->name.set(std::string(red_name));
+    red_params->set_values(add_red_item);
+    reduction_parameters.push_back(red_params);
+
+    add_red_item = add_red_item->NextSiblingElement(ReductionParameters::xml_element_name_.c_str());
   }
 }
 
@@ -1896,19 +1916,6 @@ GeneralSimulationParameters::GeneralSimulationParameters()
 
   set_parameter("Verbose", false, !required, verbose);
   set_parameter("Warning", false, !required, warning);
-
-  // Wall shear stress time-domain reduction accumulator (opt-in, default off).
-  // Face_name/update_expr/finalize_expr are conditionally required (only when
-  // enabled) and validated in wss_reduction::Accumulator::init(), not here,
-  // since set_parameter()'s required flag can't express "required if X".
-  set_parameter("Wall_reduction_enabled", false, !required, wall_reduction_enabled);
-  set_parameter("Wall_reduction_face_name", "", !required, wall_reduction_face_name);
-  set_parameter("Wall_reduction_cycle_steps", 0, !required, wall_reduction_cycle_steps, {0,int_inf});
-  set_parameter("Wall_reduction_update_expr", "", !required, wall_reduction_update_expr);
-  set_parameter("Wall_reduction_finalize_expr", "", !required, wall_reduction_finalize_expr);
-  // .vtu, not .vtp: VtkVtpData only implements set_point_data() for
-  // Vector<int> (see wss_reduction.cpp), and WSS_reduction is a double field.
-  set_parameter("Wall_reduction_output_file_path", "wss_reduction.vtu", !required, wall_reduction_output_file_path);
 }
 
 void GeneralSimulationParameters::print_parameters()
@@ -2240,6 +2247,62 @@ void ProjectionParameters::set_values(tinyxml2::XMLElement* xml_elem)
 
   std::function<void(const std::string&, const std::string&)> ftpr =
       std::bind( &ProjectionParameters::set_parameter_value, *this, _1, _2);
+
+  xml_util_set_parameters(ftpr, xml_elem, error_msg);
+}
+
+//////////////////////////////////////////////////////////
+//                ReductionParameters                   //
+//////////////////////////////////////////////////////////
+
+// The ReductionParameters class stores parameters for one repeatable
+// 'Add_reduction' XML element: one on-the-fly time-domain reduction
+// accumulator (see field_reduction.h).
+
+const std::string ReductionParameters::xml_element_name_ = "Add_reduction";
+
+ReductionParameters::ReductionParameters()
+{
+  bool required = true;
+  int int_inf = std::numeric_limits<int>::infinity();
+
+  name = Parameter<std::string>("name", "", required);
+
+  // field/scope/face_name/mesh_name/reduction_mode are conditionally
+  // required/validated (e.g. face_name only when scope=="face") in
+  // field_reduction::Accumulator::init(), not here, since set_parameter()'s
+  // required flag can't express "required if X".
+  set_parameter("Field", "", required, field);
+  set_parameter("Scope", "", required, scope);
+  set_parameter("Face_name", "", !required, face_name);
+  set_parameter("Mesh_name", "", !required, mesh_name);
+  set_parameter("Reduction_mode", "", required, reduction_mode);
+  set_parameter("Cycle_steps", 0, required, cycle_steps, {0,int_inf});
+  set_parameter("Update_expr", "", required, update_expr);
+  set_parameter("Finalize_expr", "", required, finalize_expr);
+  // Empty default: Simulation::set_module_parameters() fills in
+  // lower(field)+"_reduction.vtu" when this is left unset.
+  set_parameter("Output_file_path", "", !required, output_file_path);
+}
+
+void ReductionParameters::set_values(tinyxml2::XMLElement* xml_elem)
+{
+  using namespace tinyxml2;
+  std::string error_msg = "Unknown " + xml_element_name_ + " XML element '";
+
+  // Get the 'name' from the <Add_reduction name=NAME> element.
+  const char* sname;
+  auto result = xml_elem->QueryStringAttribute("name", &sname);
+  if (sname == nullptr) {
+    throw std::runtime_error("No NAME given in the XML <Add_reduction name=NAME> element.");
+  }
+  name.set(std::string(sname));
+
+  using std::placeholders::_1;
+  using std::placeholders::_2;
+
+  std::function<void(const std::string&, const std::string&)> ftpr =
+      std::bind( &ReductionParameters::set_parameter_value, *this, _1, _2);
 
   xml_util_set_parameters(ftpr, xml_elem, error_msg);
 }
