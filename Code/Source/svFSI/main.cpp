@@ -53,6 +53,7 @@
 #include "txt.h"
 #include "ustruct.h"
 #include "vtk_xml.h"
+#include "gr_equilibrated.h"
 
 #include <stdlib.h>
 #include <iomanip>
@@ -659,6 +660,43 @@ void iterate_solution(Simulation* simulation)
 }
 
 
+/// @brief Write a best-effort VTU snapshot of the current (non-converged, e.g.
+/// element-inverted) solution when the solver aborts — e.g. the
+/// "[gr_equilibrated] Negative Jacobian" throw — so the crash state can be
+/// inspected. Skips stress/Cauchy/VonMises VTK outputs because recomputing them
+/// on the inverted element would re-trigger the same exception. Keeps mesh
+/// (Displacement), Jacobian, and the GR stimuli (grInt). Designed for the
+/// single-process solid solve used by the partitioned FSG driver; on multiple
+/// processes it is skipped (the per-rank write would deadlock on collectives).
+void write_crash_dump(Simulation* simulation)
+{
+  auto& com_mod = simulation->com_mod;
+  if (!com_mod.saveVTK || com_mod.cm.np() != 1) {
+    return;
+  }
+
+  // Recomputing the material outputs (stress, and the GR field which shares the
+  // same get_pk2cc path) on the inverted element would re-throw. Tolerate the
+  // negative Jacobian for the duration of the dump so all fields — mesh
+  // (Displacement), Jacobian, GR stimuli, etc. — can be written; the inverted
+  // element simply gets zero stress.
+  gr_equilibrated_ns::tolerate_negative_jacobian = true;
+
+  // Tag the filename so the crash snapshot is distinct from converged results:
+  // writes <saveName>_crash_<cTS>.vtu.
+  const std::string save_name = com_mod.saveName;
+  com_mod.saveName = save_name + "_crash";
+  try {
+    vtk_xml::write_vtus(simulation, com_mod.An, com_mod.Yn, com_mod.Dn, false);
+    std::cout << "[svFSIplus] Wrote crash-state VTU: " << com_mod.saveName
+              << "_<cTS>.vtu (mesh + Jacobian + GR stimuli)" << std::endl;
+  } catch (...) {
+    // best-effort; ignore secondary failures during the dump
+  }
+  com_mod.saveName = save_name;
+  gr_equilibrated_ns::tolerate_negative_jacobian = false;
+}
+
 void run_simulation(Simulation* simulation)
 {
   iterate_solution(simulation);
@@ -763,8 +801,17 @@ int main(int argc, char *argv[])
     }
     #endif
 
-    // Run the simulation.
-    run_simulation(simulation);
+    // Run the simulation. On an abort (e.g. element inversion ->
+    // "[gr_equilibrated] Negative Jacobian"), dump the crash state to VTU for
+    // inspection, then abort with a nonzero status so the driver detects the
+    // failure.
+    try {
+      run_simulation(simulation);
+    } catch (const std::exception& e) {
+      std::cout << "[svFSIplus] Solver aborted: " << e.what() << std::endl;
+      write_crash_dump(simulation);
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    }
 
     #ifdef debug_main
     dmsg << "resetSim: " << simulation->com_mod.resetSim;

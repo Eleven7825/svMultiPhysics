@@ -41,6 +41,12 @@
 
 namespace gr_equilibrated_ns {
 
+// When true, stress_tangent_ returns zero stress/tangent for an inverted
+// element (J < 0) instead of throwing. Used only to dump a crash-state VTU
+// after an abort, so the recomputed material outputs don't re-throw on the
+// inverted element. Default false = normal (throwing) behavior.
+bool tolerate_negative_jacobian = false;
+
 namespace {
 
 // A tabulated load curve: monotonically increasing step index x mapped to the
@@ -177,8 +183,24 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
 
   // determinant of the deformation gradient
   const double J = F.det();
-  if (J < 0.0)
+  if (J < 0.0) {
+    // Inverted element. Normally fatal; during a crash-state VTU dump we return
+    // zero stress/tangent instead so the output recompute doesn't re-throw.
+    if (tolerate_negative_jacobian) {
+      if (eval_s)
+        for (int i = 0; i < 3; i++)
+          for (int j = 0; j < 3; j++)
+            S_out[i][j] = 0.0;
+      if (eval_cc)
+        for (int i = 0; i < 3; i++)
+          for (int j = 0; j < 3; j++)
+            for (int k = 0; k < 3; k++)
+              for (int l = 0; l < 3; l++)
+                CC_out[i][j][k][l] = 0.0;
+      return;
+    }
     throw std::runtime_error("[gr_equilibrated] Negative Jacobian");
+  }
 
   // set example
   enum Example { none, aneurysm, tortuosity, stenosis };
