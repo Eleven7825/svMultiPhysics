@@ -55,6 +55,10 @@
 
 namespace gr_equilibrated_ns {
 
+// When true, stress_tangent_ returns zero stress/tangent for an inverted
+// element (J < 0) instead of throwing — set while dumping a crash-state VTU.
+extern bool tolerate_negative_jacobian;
+
 void stress_tangent_(const grModelType &grM, const double Fe[3][3],
                      const double time, const Vector<double> &eVWP,
                      Vector<double> &grInt, double S_out[3][3],
