@@ -9,11 +9,17 @@
  *
  * One Accumulator instance corresponds to one <Add_reduction> block. A
  * block targets either:
- *   - Field=WSS, Scope=face: wall shear stress on one face, always reduced
- *     magnitude-first (the only thing post::bpost supports).
+ *   - Field=WSS, Scope=face: wall shear stress on one face, reduced either
+ *     magnitude-first (1 channel) or componentwise (nsd channels), per a
+ *     user-supplied Update_expr/Finalize_expr pair.
  *   - Field=Velocity|Pressure, Scope=volume: read directly from com_mod.Yn
  *     over the whole mesh, reduced either magnitude-first (1 channel) or
- *     componentwise (nsd channels for Velocity, 1 for Pressure).
+ *     componentwise (nsd channels for Velocity, 1 for Pressure), also via
+ *     a user-supplied Update_expr/Finalize_expr pair.
+ *   - Field=OSI, Scope=face: Oscillatory Shear Index, a *fixed* formula
+ *     (no Update_expr/Finalize_expr) computed from 4 internal channels
+ *     (3 componentwise WSS + 1 magnitude) combined at finalize() via
+ *     combine_osi() -- see that method's doc comment for the formula.
  */
 
 #ifndef FIELD_REDUCTION_H
@@ -82,6 +88,26 @@ class Accumulator
     double output(int channel, int local_node_idx) const { return output_(channel, local_node_idx); }
     double state(StateRow row, int channel, int local_node_idx) const { return channelState_[channel](row, local_node_idx); }
 
+    /// @brief OSI-specific combine step, run after finalize(): given the 4
+    /// already-finalized channels (0-2: componentwise WSS time-mean, 3: WSS
+    /// magnitude time-mean -- both are plain "val_sum/n" means, fed by
+    /// field_reduction_sim.cpp's update_from_solution() from one shared
+    /// post::bpost call), computes the standard Oscillatory Shear Index
+    /// per node: OSI = 0.5 * (1 - |mean_vec| / mean_mag), where mean_vec =
+    /// (channel0, channel1, channel2) and mean_mag = channel3. A node with
+    /// (near-)zero mean_mag has no measurable shear, so OSI is undefined
+    /// there and reported as 0 rather than dividing by ~0. Populates
+    /// combined_output(). Pure per-node math, no Simulation dependency --
+    /// callable standalone (after init_core()+update()+finalize() with
+    /// n_channels()==4) for unit testing.
+    /// @throws std::runtime_error if n_channels() != 4.
+    void combine_osi();
+
+    /// @brief The single-channel result of combine_osi() (or, later,
+    /// combine_transwss()) -- a scalar per node, independent of however
+    /// many internal accumulation channels were used to compute it.
+    double combined_output(int local_node_idx) const { return combinedOutput_(0, local_node_idx); }
+
     /// @brief Simulation-dependent setup for this invocation's accumulation
     /// window: validates the config (field/scope/mode combination, required
     /// fields), resolves Face_name to a mesh (WSS) or Mesh_name/the sole
@@ -138,6 +164,7 @@ class Accumulator
     int nChannels_ = 0;
     std::vector<Array<double>> channelState_;  // nChannels_ x (NUM_STATE_ROWS, nNodes_)
     Array<double> output_;                      // (nChannels_, nNodes_)
+    Array<double> combinedOutput_;               // (1, nNodes_); OSI/TransWSS only, see combine_osi()
 
     // exprtk plumbing is pImpl'd so exprtk.hpp (a ~47k-line template
     // header) is only ever included by field_reduction.cpp, not by every
@@ -148,7 +175,7 @@ class Accumulator
     std::vector<ExprtkState*> channelExpr_;
 
     std::string name_;
-    std::string field_;          // "WSS" | "Velocity" | "Pressure"
+    std::string field_;          // "WSS" | "Velocity" | "Pressure" | "OSI"
     std::string mode_;           // "magnitude" | "componentwise"
     std::string outputFilePath_;
     int iM_ = -1;

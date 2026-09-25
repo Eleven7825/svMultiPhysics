@@ -10,6 +10,7 @@
 
 #include "exprtk.hpp"
 
+#include <cmath>
 #include <stdexcept>
 
 namespace field_reduction {
@@ -136,6 +137,30 @@ void Accumulator::reset()
     state = 0.0;
   }
   output_ = 0.0;
+  combinedOutput_ = 0.0;
+}
+
+void Accumulator::combine_osi()
+{
+  if (nChannels_ != 4) {
+    throw std::runtime_error("field_reduction::Accumulator::combine_osi(): requires exactly 4 "
+        "internal channels (3 componentwise WSS + 1 magnitude), got "
+        + std::to_string(nChannels_) + ".");
+  }
+
+  combinedOutput_.resize(1, nNodes_);
+
+  for (int a = 0; a < nNodes_; a++) {
+    double mx = output_(0, a);
+    double my = output_(1, a);
+    double mz = output_(2, a);
+    double meanMag = output_(3, a);
+    double vecMag = std::sqrt(mx*mx + my*my + mz*mz);
+    // A (near-)zero mean magnitude means no measurable shear was ever seen
+    // at this node -- OSI is undefined there, reported as 0 rather than
+    // dividing by ~0.
+    combinedOutput_(0, a) = (meanMag > 1e-12) ? 0.5 * (1.0 - vecMag / meanMag) : 0.0;
+  }
 }
 
 } // namespace field_reduction

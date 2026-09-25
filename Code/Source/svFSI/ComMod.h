@@ -1288,7 +1288,7 @@ class ReductionConfig
     /// array name, which is always "<field>_reduction").
     std::string name;
 
-    /// @brief Which physical field to reduce: "WSS" | "Velocity" | "Pressure".
+    /// @brief Which physical field to reduce: "WSS" | "Velocity" | "Pressure" | "OSI".
     std::string field;
 
     /// @brief Where the field is extracted from: "face" (via post::bpost,

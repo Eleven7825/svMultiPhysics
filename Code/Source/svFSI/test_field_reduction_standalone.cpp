@@ -136,6 +136,60 @@ void test_reset_between_windows()
   check("window 2 mean (post-reset)", acc.output(0, 0), 1.0);
 }
 
+void test_osi_combine()
+{
+  std::printf("test_osi_combine (OSI = 0.5*(1 - |mean_vec| / mean_mag), 4 internal channels)\n");
+
+  // Two nodes, 4 channels each (x, y, z, magnitude), 2 synthetic timesteps.
+  //   node 0: WSS oscillates between (3,0,0) and (-1,0,0) --
+  //     mean_vec = (1,0,0), |mean_vec| = 1; mean_mag = (3+1)/2 = 2
+  //     OSI = 0.5*(1 - 1/2) = 0.25
+  //   node 1: WSS constant at (2,0,0) both steps (no oscillation) --
+  //     mean_vec = (2,0,0), |mean_vec| = 2; mean_mag = 2
+  //     OSI = 0.5*(1 - 2/2) = 0.0
+  const double node0[2][3] = {{3.0, 0.0, 0.0}, {-1.0, 0.0, 0.0}};
+  const double node1[2][3] = {{2.0, 0.0, 0.0}, {2.0, 0.0, 0.0}};
+
+  field_reduction::Accumulator acc;
+  acc.init_core(2, 4, kMeanUpdate, kMeanFinalize);
+
+  for (int t = 0; t < 2; t++) {
+    double mag0 = std::sqrt(node0[t][0]*node0[t][0] + node0[t][1]*node0[t][1] + node0[t][2]*node0[t][2]);
+    double mag1 = std::sqrt(node1[t][0]*node1[t][0] + node1[t][1]*node1[t][1] + node1[t][2]*node1[t][2]);
+    for (int i = 0; i < 3; i++) {
+      acc.update(0, i, node0[t][i]);
+      acc.update(1, i, node1[t][i]);
+    }
+    acc.update(0, 3, mag0);
+    acc.update(1, 3, mag1);
+  }
+  acc.finalize();
+  acc.combine_osi();
+
+  check("node 0 OSI (oscillating WSS)", acc.combined_output(0), 0.25);
+  check("node 1 OSI (constant WSS)", acc.combined_output(1), 0.0);
+}
+
+void test_osi_combine_wrong_channels_throws()
+{
+  std::printf("test_osi_combine_wrong_channels_throws (combine_osi requires exactly 4 channels)\n");
+
+  field_reduction::Accumulator acc;
+  acc.init_core(1, 3, kMeanUpdate, kMeanFinalize);
+  acc.update(0, 0, 1.0);
+  acc.update(0, 1, 1.0);
+  acc.update(0, 2, 1.0);
+  acc.finalize();
+
+  bool threw = false;
+  try {
+    acc.combine_osi();
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
+  check("threw on n_channels() != 4", threw ? 1.0 : 0.0, 1.0);
+}
+
 void test_parse_error_throws()
 {
   std::printf("test_parse_error_throws (bad expression must fail loudly, not silently)\n");
@@ -158,6 +212,8 @@ int main()
   test_amplitude_1channel();
   test_componentwise_3channel();
   test_reset_between_windows();
+  test_osi_combine();
+  test_osi_combine_wrong_channels_throws();
   test_parse_error_throws();
 
   if (failures == 0) {

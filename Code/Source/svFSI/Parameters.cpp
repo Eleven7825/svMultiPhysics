@@ -2271,15 +2271,19 @@ ReductionParameters::ReductionParameters()
   // field/scope/face_name/mesh_name/reduction_mode are conditionally
   // required/validated (e.g. face_name only when scope=="face") in
   // field_reduction::Accumulator::init(), not here, since set_parameter()'s
-  // required flag can't express "required if X".
+  // required flag can't express "required if X". Reduction_mode/
+  // Update_expr/Finalize_expr are likewise optional here: Field=WSS|
+  // Velocity|Pressure require them non-empty (a user-supplied formula),
+  // but Field=OSI|TransWSS forbid them (their formula is fixed) -- both
+  // enforced in Accumulator::init().
   set_parameter("Field", "", required, field);
   set_parameter("Scope", "", required, scope);
   set_parameter("Face_name", "", !required, face_name);
   set_parameter("Mesh_name", "", !required, mesh_name);
-  set_parameter("Reduction_mode", "", required, reduction_mode);
+  set_parameter("Reduction_mode", "", !required, reduction_mode);
   set_parameter("Cycle_steps", 0, required, cycle_steps, {0,int_inf});
-  set_parameter("Update_expr", "", required, update_expr);
-  set_parameter("Finalize_expr", "", required, finalize_expr);
+  set_parameter("Update_expr", "", !required, update_expr);
+  set_parameter("Finalize_expr", "", !required, finalize_expr);
   // Empty default: Simulation::set_module_parameters() fills in
   // lower(field)+"_reduction.vtu" when this is left unset.
   set_parameter("Output_file_path", "", !required, output_file_path);

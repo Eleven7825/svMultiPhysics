@@ -47,6 +47,15 @@ struct SidecarHeader
   int nChannels = 0;
 };
 
+// OSI (and, later, TransWSS) don't take a user Update_expr/Finalize_expr --
+// their formula is fixed and combined across channels at finalize() (see
+// Accumulator::combine_osi()), not expressible as one independent
+// per-channel exprtk pair. Internally they still use the plain streaming
+// mean (same text already used for Velocity/Pressure's own "time_average"
+// convention) to accumulate each of their internal channels.
+constexpr const char* kMeanUpdateExpr = "n := n + 1; val_sum := val_sum + val;";
+constexpr const char* kMeanFinalizeExpr = "val_sum / n";
+
 } // namespace
 
 void Accumulator::init(Simulation* simulation, const ReductionConfig& config)
@@ -59,39 +68,51 @@ void Accumulator::init(Simulation* simulation, const ReductionConfig& config)
   outputFilePath_ = config.outputFilePath;
 
   const std::string err_prefix = "field_reduction::Accumulator (Add_reduction name='" + name_ + "'): ";
+  const bool isOsi = (field_ == "OSI");
 
-  if (field_ != "WSS" && field_ != "Velocity" && field_ != "Pressure") {
-    throw std::runtime_error(err_prefix + "Field must be one of WSS|Velocity|Pressure, got '" + field_ + "'.");
+  if (field_ != "WSS" && field_ != "Velocity" && field_ != "Pressure" && !isOsi) {
+    throw std::runtime_error(err_prefix + "Field must be one of WSS|Velocity|Pressure|OSI, got '" + field_ + "'.");
   }
   if (config.scope != "face" && config.scope != "volume") {
     throw std::runtime_error(err_prefix + "Scope must be face|volume, got '" + config.scope + "'.");
   }
-  if (field_ == "WSS" && config.scope != "face") {
-    throw std::runtime_error(err_prefix + "Field=WSS requires Scope=face (post::bpost only computes WSS on a face).");
+  if ((field_ == "WSS" || isOsi) && config.scope != "face") {
+    throw std::runtime_error(err_prefix + "Field=" + field_ + " requires Scope=face (post::bpost only computes WSS on a face).");
   }
-  if (field_ != "WSS" && config.scope != "volume") {
-    throw std::runtime_error(err_prefix + "Field=" + field_ + " requires Scope=volume (only WSS supports Scope=face).");
-  }
-  if (mode_ != "magnitude" && mode_ != "componentwise") {
-    throw std::runtime_error(err_prefix + "Reduction_mode must be magnitude|componentwise, got '" + mode_ + "'.");
-  }
-  if (field_ == "Pressure" && mode_ != "componentwise") {
-    throw std::runtime_error(err_prefix + "Field=Pressure requires Reduction_mode=componentwise "
-        "(magnitude of a scalar field is not a meaningful reduction here).");
+  if (field_ != "WSS" && !isOsi && config.scope != "volume") {
+    throw std::runtime_error(err_prefix + "Field=" + field_ + " requires Scope=volume (only WSS/OSI support Scope=face).");
   }
   if (config.cycleSteps <= 0) {
     throw std::runtime_error(err_prefix + "Cycle_steps must be > 0 (got " + std::to_string(config.cycleSteps) + ").");
   }
-  if (config.updateExpr.empty() || config.finalizeExpr.empty()) {
-    throw std::runtime_error(err_prefix + "Update_expr/Finalize_expr must both be non-empty.");
+
+  if (isOsi) {
+    // OSI's formula is fixed -- Reduction_mode/Update_expr/Finalize_expr
+    // would silently be ignored if supplied, which is more likely to hide
+    // a user mistake than help, so they're forbidden outright.
+    if (!config.mode.empty() || !config.updateExpr.empty() || !config.finalizeExpr.empty()) {
+      throw std::runtime_error(err_prefix + "Field=OSI has a fixed formula and does not take "
+          "Reduction_mode/Update_expr/Finalize_expr -- omit them.");
+    }
+  } else {
+    if (mode_ != "magnitude" && mode_ != "componentwise") {
+      throw std::runtime_error(err_prefix + "Reduction_mode must be magnitude|componentwise, got '" + mode_ + "'.");
+    }
+    if (field_ == "Pressure" && mode_ != "componentwise") {
+      throw std::runtime_error(err_prefix + "Field=Pressure requires Reduction_mode=componentwise "
+          "(magnitude of a scalar field is not a meaningful reduction here).");
+    }
+    if (config.updateExpr.empty() || config.finalizeExpr.empty()) {
+      throw std::runtime_error(err_prefix + "Update_expr/Finalize_expr must both be non-empty.");
+    }
   }
 
   const int nsd = com_mod.nsd;
   int nChannels = 1;
 
-  if (field_ == "WSS") {
+  if (field_ == "WSS" || isOsi) {
     if (config.faceName.empty()) {
-      throw std::runtime_error(err_prefix + "Field=WSS (Scope=face) requires a non-empty Face_name.");
+      throw std::runtime_error(err_prefix + "Field=" + field_ + " (Scope=face) requires a non-empty Face_name.");
     }
     int iFa = -1;
     all_fun::find_face(com_mod.msh, config.faceName, iM_, iFa);
@@ -99,7 +120,10 @@ void Accumulator::init(Simulation* simulation, const ReductionConfig& config)
       throw std::runtime_error(err_prefix + "Face_name '" + config.faceName + "' resolves to face index "
           + std::to_string(iFa) + " of its mesh, but post::bpost only computes WSS on face index 0.");
     }
-    nChannels = (mode_ == "magnitude") ? 1 : nsd;
+    // OSI always accumulates 3 componentwise channels + 1 magnitude
+    // channel internally, combined into 1 output value at finalize() via
+    // combine_osi() -- see field_reduction.cpp.
+    nChannels = isOsi ? (nsd + 1) : ((mode_ == "magnitude") ? 1 : nsd);
 
   } else {
     // Velocity | Pressure, Scope=volume.
@@ -121,7 +145,9 @@ void Accumulator::init(Simulation* simulation, const ReductionConfig& config)
   }
 
   const auto& msh = com_mod.msh[iM_];
-  init_core(msh.nNo, nChannels, config.updateExpr, config.finalizeExpr);
+  init_core(msh.nNo, nChannels,
+      isOsi ? kMeanUpdateExpr : config.updateExpr,
+      isOsi ? kMeanFinalizeExpr : config.finalizeExpr);
 
   // This invocation's target final cTS, computed independently of
   // main.cpp's own local of the same name -- see main.cpp:100,148-150 (the
@@ -258,12 +284,22 @@ void Accumulator::update_from_solution(Simulation* simulation)
   auto& msh = com_mod.msh[iM_];
   const int nsd = com_mod.nsd;
 
-  if (field_ == "WSS") {
+  if (field_ == "WSS" || field_ == "OSI") {
     Array<double> tmpV(consts::maxNSD, msh.nNo);
     post::bpost(simulation, msh, tmpV, com_mod.Yn, com_mod.Dn, consts::OutputType::outGrp_WSS);
 
     for (int a = 0; a < msh.nNo; a++) {
-      if (mode_ == "magnitude") {
+      if (field_ == "OSI") {
+        // Feed both representations from this one bpost call: channels
+        // 0..nsd-1 are the componentwise WSS vector, channel nsd is its
+        // magnitude -- combine_osi() combines all 4 at finalize().
+        double mag2 = 0.0;
+        for (int i = 0; i < nsd; i++) {
+          update(a, i, tmpV(i,a));
+          mag2 += tmpV(i,a) * tmpV(i,a);
+        }
+        update(a, nsd, std::sqrt(mag2));
+      } else if (mode_ == "magnitude") {
         double mag2 = 0.0;
         for (int i = 0; i < nsd; i++) {
           mag2 += tmpV(i,a) * tmpV(i,a);
@@ -313,6 +349,9 @@ void Accumulator::update_from_solution(Simulation* simulation)
 void Accumulator::finalize_and_write(Simulation* simulation)
 {
   finalize();
+  if (field_ == "OSI") {
+    combine_osi();
+  }
 
   auto& com_mod = simulation->com_mod;
   auto& cm_mod = simulation->cm_mod;
@@ -337,9 +376,12 @@ void Accumulator::finalize_and_write(Simulation* simulation)
   // arrays for the ordinary VTU writer (vtk_xml.cpp's "d.gx =
   // all_fun::global(...)"). Returns an empty array on non-master ranks.
   // output_'s row count (nChannels_) passes through global() unchanged --
-  // no reshaping needed for multi-channel output.
+  // no reshaping needed for multi-channel output. OSI (and, later,
+  // TransWSS) write their single combined channel instead of the raw
+  // internal accumulation channels.
+  const bool isCombined = (field_ == "OSI");
   Array<double> gx = all_fun::global(com_mod, cm_mod, msh, x);
-  Array<double> gOut = all_fun::global(com_mod, cm_mod, msh, output_);
+  Array<double> gOut = all_fun::global(com_mod, cm_mod, msh, isCombined ? combinedOutput_ : output_);
 
   if (cm.slv(cm_mod)) {
     return;
