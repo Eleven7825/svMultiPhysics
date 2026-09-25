@@ -652,6 +652,21 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
                                  eta - 1.0)); // initial tangent d(R)/d(phic)
     double Rphi = phieo + phimo * pow(J / Jo * phic / phico, eta) +
                   J / Jo * phic - J / Jo; // initial residue
+    // Bounded local Newton iteration for phic: this previously had no
+    // iteration cap (the "j<10" guard below was dead, commented-out code),
+    // so a material state far enough outside the model's normal operating
+    // envelope for Rphi to never satisfy the tolerance -- e.g. induced by
+    // feeding a directional/oscillatory WSS metric into the stimulus
+    // instead of a magnitude -- spun this loop at 100% CPU forever instead
+    // of failing. Throwing here lets it join the same abort path as the
+    // negative-Jacobian check above: the outer run_simulation() catch
+    // dumps a crash-state VTU and calls MPI_Abort(); if this instead fires
+    // while write_crash_dump() itself is recomputing GR stimuli on some
+    // other (non-inverted) element, its own best-effort catch(...) simply
+    // abandons that recompute and control still returns to the same
+    // MPI_Abort() -- either way, a loud, bounded failure, not a hang.
+    const int maxItr = 10;
+    int j = 0;
     do {                                  // local iterations to obtain phic
       phic = phic - Rphi / dRdc;          // phic
       dRdc = J / Jo *
@@ -659,7 +674,13 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
                         pow(J / Jo * phic / phico, eta - 1.0)); // tangent
       Rphi = phieo + phimo * pow(J / Jo * phic / phico, eta) + J / Jo * phic -
              J / Jo;                 // update residue
-    } while (abs(Rphi) > sqrt(eps)); // && abs(Rphi/Rphi0) > sqrt(eps) && j<10
+      if (++j >= maxItr) {
+        throw std::runtime_error(
+            "[gr_equilibrated] Local phic iteration failed to converge after "
+            + std::to_string(maxItr) + " iterations (|Rphi|=" + std::to_string(std::abs(Rphi))
+            + ", tol=" + std::to_string(sqrt(eps)) + ").");
+      }
+    } while (abs(Rphi) > sqrt(eps));
 
     // converge phase -> phic (updated in material point memory)
     phic_gp = phic - Rphi / dRdc;
