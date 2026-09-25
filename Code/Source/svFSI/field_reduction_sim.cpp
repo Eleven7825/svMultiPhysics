@@ -29,7 +29,11 @@ namespace {
 // file, so a corrupt/foreign file at the same path is rejected (falls back
 // to a fresh window) instead of being misread as valid state.
 constexpr int kSidecarMagic = 0x46524231; // "FRB1", ASCII-ish
-constexpr int kSidecarVersion = 1;
+// Bumped to 2 for the added bufferSteps field (TransWSS's raw per-timestep
+// buffer) -- the version-mismatch check below safely rejects any sidecar
+// written by the previous (smaller) header layout, falling back to a
+// fresh window exactly like any other invalidation case.
+constexpr int kSidecarVersion = 2;
 
 // One rank's fixed-length record in <stFileName>_<name>_reduction.bin, at
 // offset (rank_id * recLn) -- recLn is the MAX of every rank's own record
@@ -45,6 +49,10 @@ struct SidecarHeader
   int windowStartCTS = 0;
   int nNodes = 0;
   int nChannels = 0;
+  // 0 for every field except TransWSS, where it equals Cycle_steps -- the
+  // raw per-timestep WSS buffer (wssBuffer_) written/read right after
+  // channelState_ when nonzero. See Accumulator::combine_transwss().
+  int bufferSteps = 0;
 };
 
 // OSI (and, later, TransWSS) don't take a user Update_expr/Finalize_expr --
@@ -69,30 +77,33 @@ void Accumulator::init(Simulation* simulation, const ReductionConfig& config)
 
   const std::string err_prefix = "field_reduction::Accumulator (Add_reduction name='" + name_ + "'): ";
   const bool isOsi = (field_ == "OSI");
+  const bool isTransWss = (field_ == "TransWSS");
+  const bool isFixedFormula = isOsi || isTransWss;
 
-  if (field_ != "WSS" && field_ != "Velocity" && field_ != "Pressure" && !isOsi) {
-    throw std::runtime_error(err_prefix + "Field must be one of WSS|Velocity|Pressure|OSI, got '" + field_ + "'.");
+  if (field_ != "WSS" && field_ != "Velocity" && field_ != "Pressure" && !isFixedFormula) {
+    throw std::runtime_error(err_prefix + "Field must be one of WSS|Velocity|Pressure|OSI|TransWSS, got '" + field_ + "'.");
   }
   if (config.scope != "face" && config.scope != "volume") {
     throw std::runtime_error(err_prefix + "Scope must be face|volume, got '" + config.scope + "'.");
   }
-  if ((field_ == "WSS" || isOsi) && config.scope != "face") {
+  if ((field_ == "WSS" || isFixedFormula) && config.scope != "face") {
     throw std::runtime_error(err_prefix + "Field=" + field_ + " requires Scope=face (post::bpost only computes WSS on a face).");
   }
-  if (field_ != "WSS" && !isOsi && config.scope != "volume") {
-    throw std::runtime_error(err_prefix + "Field=" + field_ + " requires Scope=volume (only WSS/OSI support Scope=face).");
+  if (field_ != "WSS" && !isFixedFormula && config.scope != "volume") {
+    throw std::runtime_error(err_prefix + "Field=" + field_ + " requires Scope=volume (only WSS/OSI/TransWSS support Scope=face).");
   }
   if (config.cycleSteps <= 0) {
     throw std::runtime_error(err_prefix + "Cycle_steps must be > 0 (got " + std::to_string(config.cycleSteps) + ").");
   }
 
-  if (isOsi) {
-    // OSI's formula is fixed -- Reduction_mode/Update_expr/Finalize_expr
-    // would silently be ignored if supplied, which is more likely to hide
-    // a user mistake than help, so they're forbidden outright.
+  if (isFixedFormula) {
+    // OSI/TransWSS's formula is fixed -- Reduction_mode/Update_expr/
+    // Finalize_expr would silently be ignored if supplied, which is more
+    // likely to hide a user mistake than help, so they're forbidden
+    // outright.
     if (!config.mode.empty() || !config.updateExpr.empty() || !config.finalizeExpr.empty()) {
-      throw std::runtime_error(err_prefix + "Field=OSI has a fixed formula and does not take "
-          "Reduction_mode/Update_expr/Finalize_expr -- omit them.");
+      throw std::runtime_error(err_prefix + "Field=" + field_ + " has a fixed formula and does not "
+          "take Reduction_mode/Update_expr/Finalize_expr -- omit them.");
     }
   } else {
     if (mode_ != "magnitude" && mode_ != "componentwise") {
@@ -110,7 +121,7 @@ void Accumulator::init(Simulation* simulation, const ReductionConfig& config)
   const int nsd = com_mod.nsd;
   int nChannels = 1;
 
-  if (field_ == "WSS" || isOsi) {
+  if (field_ == "WSS" || isFixedFormula) {
     if (config.faceName.empty()) {
       throw std::runtime_error(err_prefix + "Field=" + field_ + " (Scope=face) requires a non-empty Face_name.");
     }
@@ -122,8 +133,11 @@ void Accumulator::init(Simulation* simulation, const ReductionConfig& config)
     }
     // OSI always accumulates 3 componentwise channels + 1 magnitude
     // channel internally, combined into 1 output value at finalize() via
-    // combine_osi() -- see field_reduction.cpp.
-    nChannels = isOsi ? (nsd + 1) : ((mode_ == "magnitude") ? 1 : nsd);
+    // combine_osi(). TransWSS accumulates just the 3 componentwise
+    // channels (its own combine_transwss() also needs the raw per-
+    // timestep buffer, allocated separately below via init_core()'s
+    // bufferSteps/vecDim).
+    nChannels = isOsi ? (nsd + 1) : (isTransWss ? nsd : ((mode_ == "magnitude") ? 1 : nsd));
 
   } else {
     // Velocity | Pressure, Scope=volume.
@@ -146,8 +160,31 @@ void Accumulator::init(Simulation* simulation, const ReductionConfig& config)
 
   const auto& msh = com_mod.msh[iM_];
   init_core(msh.nNo, nChannels,
-      isOsi ? kMeanUpdateExpr : config.updateExpr,
-      isOsi ? kMeanFinalizeExpr : config.finalizeExpr);
+      isFixedFormula ? kMeanUpdateExpr : config.updateExpr,
+      isFixedFormula ? kMeanFinalizeExpr : config.finalizeExpr,
+      isTransWss ? config.cycleSteps : 0,
+      isTransWss ? nsd : 0);
+
+  if (isTransWss) {
+    // Build a mesh-local-indexed per-node normal array from the resolved
+    // face's own fa.nV (already computed by the solver -- see
+    // post.cpp:155-170 for the identical face-local -> global-tnNo ->
+    // mesh-local pattern this mirrors). Zero everywhere except the face's
+    // own nodes, exactly like WSS's own tmpV (post::bpost fills the whole
+    // mesh, meaningful only on the face) -- computed once here, not
+    // per-timestep, since the geometry doesn't move within one fluid
+    // solve invocation.
+    faceNormal_.resize(nsd, msh.nNo);
+    faceNormal_ = 0.0;
+    const auto& fa = msh.fa[0];
+    for (int a = 0; a < fa.nNo; a++) {
+      int Ac = fa.gN(a);
+      int localA = msh.lN(Ac);
+      for (int i = 0; i < nsd; i++) {
+        faceNormal_(i, localA) = fa.nV(i, a);
+      }
+    }
+  }
 
   // This invocation's target final cTS, computed independently of
   // main.cpp's own local of the same name -- see main.cpp:100,148-150 (the
@@ -183,7 +220,11 @@ bool Accumulator::load_restart_sidecar(Simulation* simulation)
   for (const auto& state : channelState_) {
     channelBytes += state.msize();
   }
-  int mySize = static_cast<int>(sizeof(SidecarHeader)) + channelBytes;
+  int bufferBytes = 0;
+  for (const auto& step : wssBuffer_) {
+    bufferBytes += step.msize();
+  }
+  int mySize = static_cast<int>(sizeof(SidecarHeader)) + channelBytes + bufferBytes;
   int recLn = 0;
   MPI_Allreduce(&mySize, &recLn, 1, cm_mod::mpint, MPI_MAX, cm.com());
 
@@ -201,10 +242,10 @@ bool Accumulator::load_restart_sidecar(Simulation* simulation)
   if (!in || onDisk.magic != kSidecarMagic || onDisk.version != kSidecarVersion) {
     return false;
   }
-  // A mismatched node/channel count means the mesh/partition/config
+  // A mismatched node/channel/buffer count means the mesh/partition/config
   // changed since this sidecar was written -- unsafe to trust its
   // per-node state, which is implicitly keyed by local node index.
-  if (onDisk.nNodes != nNodes_ || onDisk.nChannels != nChannels_) {
+  if (onDisk.nNodes != nNodes_ || onDisk.nChannels != nChannels_ || onDisk.bufferSteps != bufferSteps_) {
     return false;
   }
   // Anything other than an exact window match means this sidecar is from
@@ -217,6 +258,12 @@ bool Accumulator::load_restart_sidecar(Simulation* simulation)
 
   for (auto& state : channelState_) {
     in.read(reinterpret_cast<char*>(state.data()), state.msize());
+    if (!in) {
+      return false;
+    }
+  }
+  for (auto& step : wssBuffer_) {
+    in.read(reinterpret_cast<char*>(step.data()), step.msize());
     if (!in) {
       return false;
     }
@@ -239,12 +286,17 @@ void Accumulator::write_restart_sidecar(Simulation* simulation)
   hdr.windowStartCTS = windowStartCTS_;
   hdr.nNodes = nNodes_;
   hdr.nChannels = nChannels_;
+  hdr.bufferSteps = bufferSteps_;
 
   int channelBytes = 0;
   for (const auto& state : channelState_) {
     channelBytes += state.msize();
   }
-  int mySize = static_cast<int>(sizeof(SidecarHeader)) + channelBytes;
+  int bufferBytes = 0;
+  for (const auto& step : wssBuffer_) {
+    bufferBytes += step.msize();
+  }
+  int mySize = static_cast<int>(sizeof(SidecarHeader)) + channelBytes + bufferBytes;
   int recLn = 0;
   MPI_Allreduce(&mySize, &recLn, 1, cm_mod::mpint, MPI_MAX, cm.com());
 
@@ -270,6 +322,9 @@ void Accumulator::write_restart_sidecar(Simulation* simulation)
   for (const auto& state : channelState_) {
     out.write(reinterpret_cast<const char*>(state.data()), state.msize());
   }
+  for (const auto& step : wssBuffer_) {
+    out.write(reinterpret_cast<const char*>(step.data()), step.msize());
+  }
   out.close();
 }
 
@@ -284,7 +339,7 @@ void Accumulator::update_from_solution(Simulation* simulation)
   auto& msh = com_mod.msh[iM_];
   const int nsd = com_mod.nsd;
 
-  if (field_ == "WSS" || field_ == "OSI") {
+  if (field_ == "WSS" || field_ == "OSI" || field_ == "TransWSS") {
     Array<double> tmpV(consts::maxNSD, msh.nNo);
     post::bpost(simulation, msh, tmpV, com_mod.Yn, com_mod.Dn, consts::OutputType::outGrp_WSS);
 
@@ -299,6 +354,18 @@ void Accumulator::update_from_solution(Simulation* simulation)
           mag2 += tmpV(i,a) * tmpV(i,a);
         }
         update(a, nsd, std::sqrt(mag2));
+      } else if (field_ == "TransWSS") {
+        // Channels 0..nsd-1 give mean_vec at finalize() (same as OSI's own
+        // first 3 channels); the raw per-timestep vector is also buffered
+        // here (record_raw()), since combine_transwss() needs each
+        // individual timestep's WSS, not just their running sum -- the
+        // transverse reference direction isn't known until the whole
+        // window has been seen.
+        int stepIdx = com_mod.cTS - windowStartCTS_;
+        for (int i = 0; i < nsd; i++) {
+          update(a, i, tmpV(i,a));
+          record_raw(stepIdx, i, a, tmpV(i,a));
+        }
       } else if (mode_ == "magnitude") {
         double mag2 = 0.0;
         for (int i = 0; i < nsd; i++) {
@@ -351,6 +418,8 @@ void Accumulator::finalize_and_write(Simulation* simulation)
   finalize();
   if (field_ == "OSI") {
     combine_osi();
+  } else if (field_ == "TransWSS") {
+    combine_transwss(faceNormal_);
   }
 
   auto& com_mod = simulation->com_mod;
@@ -379,7 +448,7 @@ void Accumulator::finalize_and_write(Simulation* simulation)
   // no reshaping needed for multi-channel output. OSI (and, later,
   // TransWSS) write their single combined channel instead of the raw
   // internal accumulation channels.
-  const bool isCombined = (field_ == "OSI");
+  const bool isCombined = (field_ == "OSI" || field_ == "TransWSS");
   Array<double> gx = all_fun::global(com_mod, cm_mod, msh, x);
   Array<double> gOut = all_fun::global(com_mod, cm_mod, msh, isCombined ? combinedOutput_ : output_);
 

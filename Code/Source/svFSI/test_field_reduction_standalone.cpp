@@ -190,6 +190,91 @@ void test_osi_combine_wrong_channels_throws()
   check("threw on n_channels() != 4", threw ? 1.0 : 0.0, 1.0);
 }
 
+void test_transwss_combine()
+{
+  std::printf("test_transwss_combine (TransWSS = mean_t(|WSS(t) . normalize(normal x mean_vec)|))\n");
+
+  // Single node, 3 channels (componentwise WSS mean) + a 4-step raw buffer.
+  // normal = (0,0,1); WSS series: (1,2,0), (1,-2,0), (1,3,0), (1,-3,0).
+  //   mean_vec = (1, 0, 0)
+  //   e = normalize(normal x mean_vec) = normalize((0,0,1)x(1,0,0))
+  //     = normalize((0,1,0)) = (0,1,0)
+  //   dot(WSS(t), e) = y-component of WSS(t): 2, -2, 3, -3
+  //   TransWSS = mean(|2|,|-2|,|3|,|-3|) = (2+2+3+3)/4 = 2.5
+  const double wss[4][3] = {{1.0, 2.0, 0.0}, {1.0, -2.0, 0.0}, {1.0, 3.0, 0.0}, {1.0, -3.0, 0.0}};
+
+  field_reduction::Accumulator acc;
+  acc.init_core(1, 3, kMeanUpdate, kMeanFinalize, /*bufferSteps=*/4, /*vecDim=*/3);
+
+  for (int t = 0; t < 4; t++) {
+    for (int i = 0; i < 3; i++) {
+      acc.update(0, i, wss[t][i]);
+      acc.record_raw(t, i, 0, wss[t][i]);
+    }
+  }
+  acc.finalize();
+
+  Array<double> faceNormal(3, 1);
+  faceNormal(0, 0) = 0.0;
+  faceNormal(1, 0) = 0.0;
+  faceNormal(2, 0) = 1.0;
+  acc.combine_transwss(faceNormal);
+
+  check("TransWSS (oscillating transverse component)", acc.combined_output(0), 2.5);
+}
+
+void test_transwss_combine_parallel_normal_is_zero()
+{
+  std::printf("test_transwss_combine_parallel_normal_is_zero (normal parallel to mean_vec -> 0, no divide-by-~0)\n");
+
+  // normal = (1,0,0), WSS series entirely along x -- mean_vec is also
+  // along x, so normal x mean_vec = 0 -- no well-defined transverse
+  // direction, TransWSS must be reported as 0.
+  const double wss[2][3] = {{1.0, 0.0, 0.0}, {2.0, 0.0, 0.0}};
+
+  field_reduction::Accumulator acc;
+  acc.init_core(1, 3, kMeanUpdate, kMeanFinalize, /*bufferSteps=*/2, /*vecDim=*/3);
+
+  for (int t = 0; t < 2; t++) {
+    for (int i = 0; i < 3; i++) {
+      acc.update(0, i, wss[t][i]);
+      acc.record_raw(t, i, 0, wss[t][i]);
+    }
+  }
+  acc.finalize();
+
+  Array<double> faceNormal(3, 1);
+  faceNormal(0, 0) = 1.0;
+  faceNormal(1, 0) = 0.0;
+  faceNormal(2, 0) = 0.0;
+  acc.combine_transwss(faceNormal);
+
+  check("TransWSS (normal parallel to mean_vec)", acc.combined_output(0), 0.0);
+}
+
+void test_transwss_combine_no_buffer_throws()
+{
+  std::printf("test_transwss_combine_no_buffer_throws (combine_transwss requires a buffer)\n");
+
+  field_reduction::Accumulator acc;
+  acc.init_core(1, 3, kMeanUpdate, kMeanFinalize);  // bufferSteps defaults to 0
+  acc.update(0, 0, 1.0);
+  acc.update(0, 1, 0.0);
+  acc.update(0, 2, 0.0);
+  acc.finalize();
+
+  Array<double> faceNormal(3, 1);
+  faceNormal(2, 0) = 1.0;
+
+  bool threw = false;
+  try {
+    acc.combine_transwss(faceNormal);
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
+  check("threw on missing buffer", threw ? 1.0 : 0.0, 1.0);
+}
+
 void test_parse_error_throws()
 {
   std::printf("test_parse_error_throws (bad expression must fail loudly, not silently)\n");
@@ -214,6 +299,9 @@ int main()
   test_reset_between_windows();
   test_osi_combine();
   test_osi_combine_wrong_channels_throws();
+  test_transwss_combine();
+  test_transwss_combine_parallel_normal_is_zero();
+  test_transwss_combine_no_buffer_throws();
   test_parse_error_throws();
 
   if (failures == 0) {

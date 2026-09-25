@@ -20,6 +20,11 @@
  *     (no Update_expr/Finalize_expr) computed from 4 internal channels
  *     (3 componentwise WSS + 1 magnitude) combined at finalize() via
  *     combine_osi() -- see that method's doc comment for the formula.
+ *   - Field=TransWSS, Scope=face: Transverse WSS, also a *fixed* formula.
+ *     Unlike every other field, its reference direction (the transverse
+ *     unit vector) isn't known until the whole cycle's mean WSS vector has
+ *     been seen, so the per-timestep raw WSS vector is buffered (not just
+ *     reduced online) and revisited at finalize() via combine_transwss().
  */
 
 #ifndef FIELD_REDUCTION_H
@@ -64,9 +69,14 @@ class Accumulator
     /// per-channel state for nNodes nodes / nChannels channels. Safe to
     /// call standalone, with no Simulation/mesh/MPI context -- this is
     /// what a unit test exercises directly.
+    ///
+    /// bufferSteps > 0 (TransWSS only) additionally allocates a raw
+    /// per-timestep vector buffer -- see record_raw()/combine_transwss() --
+    /// sized bufferSteps x (vecDim, nNodes). Every other field leaves it 0
+    /// (no buffer).
     /// @throws std::runtime_error if either expression fails to parse.
     void init_core(int nNodes, int nChannels, const std::string& update_expr,
-        const std::string& finalize_expr);
+        const std::string& finalize_expr, int bufferSteps = 0, int vecDim = 0);
 
     /// @brief Per-node, per-channel update: copies this node/channel's
     /// running state into that channel's expression's bound scratch
@@ -103,10 +113,37 @@ class Accumulator
     /// @throws std::runtime_error if n_channels() != 4.
     void combine_osi();
 
-    /// @brief The single-channel result of combine_osi() (or, later,
-    /// combine_transwss()) -- a scalar per node, independent of however
-    /// many internal accumulation channels were used to compute it.
+    /// @brief The single-channel result of combine_osi()/combine_transwss()
+    /// -- a scalar per node, independent of however many internal
+    /// accumulation channels/buffered timesteps were used to compute it.
     double combined_output(int local_node_idx) const { return combinedOutput_(0, local_node_idx); }
+
+    /// @brief Records one component of the raw (not reduced) vector value
+    /// at (step_idx, local_node_idx) into the buffer allocated by
+    /// init_core()'s bufferSteps/vecDim. Called once per component per
+    /// node per in-window timestep, alongside (not instead of) update() --
+    /// TransWSS still needs channels 0-2's running mean too (see
+    /// combine_transwss()). O(1), no re-parsing.
+    /// @throws std::runtime_error if step_idx is out of [0, bufferSteps).
+    void record_raw(int step_idx, int component, int local_node_idx, double value);
+
+    /// @brief TransWSS-specific combine step, run after finalize(): given
+    /// the already-finalized channels 0-2 (componentwise WSS time-mean --
+    /// mean_vec) and the buffered raw per-timestep WSS vectors, computes
+    /// the standard Transverse WSS per node:
+    ///   e = normalize(faceNormal x mean_vec)
+    ///   TransWSS = mean_t( | WSS(t) . e | )
+    /// faceNormal is (3, nNodes), the per-node unit surface normal (built
+    /// by field_reduction_sim.cpp from the resolved face's fa.nV -- see
+    /// Accumulator::init()). A node whose faceNormal and mean_vec are
+    /// (near-)parallel has no well-defined transverse direction, so e's
+    /// normalization is skipped and TransWSS is reported as 0 there. Pure
+    /// per-node math, no Simulation dependency -- callable standalone
+    /// (after init_core(..., bufferSteps>0, vecDim=3)+update()+
+    /// record_raw()+finalize()) for unit testing.
+    /// @throws std::runtime_error if n_channels() != 3 or no buffer was
+    /// allocated (bufferSteps==0 at init_core()).
+    void combine_transwss(const Array<double>& faceNormal);
 
     /// @brief Simulation-dependent setup for this invocation's accumulation
     /// window: validates the config (field/scope/mode combination, required
@@ -165,6 +202,9 @@ class Accumulator
     std::vector<Array<double>> channelState_;  // nChannels_ x (NUM_STATE_ROWS, nNodes_)
     Array<double> output_;                      // (nChannels_, nNodes_)
     Array<double> combinedOutput_;               // (1, nNodes_); OSI/TransWSS only, see combine_osi()
+    std::vector<Array<double>> wssBuffer_;       // bufferSteps_ x (vecDim_, nNodes_); TransWSS only
+    int bufferSteps_ = 0;
+    Array<double> faceNormal_;                   // (3, nNodes_); TransWSS only, built once in init()
 
     // exprtk plumbing is pImpl'd so exprtk.hpp (a ~47k-line template
     // header) is only ever included by field_reduction.cpp, not by every
@@ -175,7 +215,7 @@ class Accumulator
     std::vector<ExprtkState*> channelExpr_;
 
     std::string name_;
-    std::string field_;          // "WSS" | "Velocity" | "Pressure" | "OSI"
+    std::string field_;          // "WSS" | "Velocity" | "Pressure" | "OSI" | "TransWSS"
     std::string mode_;           // "magnitude" | "componentwise"
     std::string outputFilePath_;
     int iM_ = -1;
