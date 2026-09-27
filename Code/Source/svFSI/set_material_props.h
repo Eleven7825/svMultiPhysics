@@ -198,6 +198,7 @@ SeMaterialPropertiesMapType set_material_props = {
   lDmn.grM.insult_file = params.insult_file.value();
   lDmn.grM.tau_ratio_floor = params.tau_ratio_floor.value();
   lDmn.grM.additive_stimulus = params.additive_stimulus.value();
+  lDmn.grM.additive_stimulus_scale = params.additive_stimulus_scale.value();
   lDmn.grM.KsKi = params.KsKi.value();
   lDmn.grM.curve = params.curve.value();
   lDmn.grM.mult = params.mult.value();

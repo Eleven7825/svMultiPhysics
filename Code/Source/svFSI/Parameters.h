@@ -555,6 +555,9 @@ class GREquilibratedParameters : public ParameterLists
     // Use an additive (tau - tauo) deviation instead of the default ratio
     // (tau/tauo) form -- see grModelType::additive_stimulus in ComMod.h.
     Parameter<bool> additive_stimulus;
+    // Non-dimensionalizing scale for the additive deviation above -- see
+    // grModelType::additive_stimulus_scale in ComMod.h.
+    Parameter<double> additive_stimulus_scale;
     Parameter<double> KsKi;
     Parameter<double> curve;
     Parameter<double> mult;

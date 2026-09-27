@@ -757,15 +757,21 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
         (ro - rIo) / rIo * lr; // rIrIo -> rIorIo = 1 for F -> Fo
 
     if (grM.coup_wss) {
-      // additive_stimulus: tau_ratio = 1 + (tau - tauo), for a stimulus
-      // field whose homeostatic value is intrinsically near zero (OSI, or a
-      // TransWSS/WSS fraction -- see grModelType::additive_stimulus's own
-      // comment in ComMod.h). Framing it as "1 + deviation" keeps every
+      // additive_stimulus: tau_ratio = 1 + (tau - tauo)/additive_stimulus_scale,
+      // for a stimulus field whose homeostatic value is intrinsically near
+      // zero (OSI, or a TransWSS/WSS fraction -- see grModelType::
+      // additive_stimulus's own comment in ComMod.h). additive_stimulus_scale
+      // non-dimensionalizes the deviation by the field's own theoretical
+      // range (see grModelType::additive_stimulus_scale) instead of by tauo
+      // (which is a good center for the deviation but, being near-zero, a
+      // bad scale for it). Framing it as "1 + deviation" keeps every
       // downstream consumer of tau_ratio (Cratio, p_gp, the tangent, grInt
       // storage) unchanged: they all already only ever use
       // "tau_ratio - 1" or "EPS*tau_ratio - 1", i.e. the deviation from
       // homeostasis, regardless of which form computed tau_ratio.
-      tau_ratio = grM.additive_stimulus ? (1.0 + (tau - tauo)) : (tau / tauo);
+      tau_ratio = grM.additive_stimulus
+                      ? (1.0 + (tau - tauo) / grM.additive_stimulus_scale)
+                      : (tau / tauo);
     } else {
       tau_ratio = pow(rIrIo, -3);
     }

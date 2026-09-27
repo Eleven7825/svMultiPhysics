@@ -439,17 +439,35 @@ class grModelType
     // tau_ratio feeds the growth/vasoactive response (Cratio, p_gp, the
     // tangent). false (default, historical behavior): tau_ratio = tau/tauo,
     // correct when "tau" is a WSS-like magnitude with a robust, non-vanishing
-    // homeostatic value tauo. true: tau_ratio = 1 + (tau - tauo), an additive
-    // deviation -- required when "tau" is instead fed OSI or a TransWSS/WSS
-    // fraction (see svfsi.py's wss_stimulus_field), whose homeostatic value
-    // is intrinsically near zero: a ratio against a near-zero tauo is
-    // ill-conditioned (confirmed empirically -- an 8-47x blowup from what was
-    // actually a modest absolute OSI change), while an additive deviation of
-    // an already-bounded, dimensionless quantity stays well-scaled regardless
-    // of how small tauo is. Every downstream consumer of tau_ratio is
-    // unchanged either way, since both forms are already framed as
-    // "tau_ratio - 1" = the deviation from homeostasis.
+    // homeostatic value tauo. true: tau_ratio = 1 + (tau - tauo)/additive_
+    // stimulus_scale, an additive deviation -- required when "tau" is instead
+    // fed OSI or a TransWSS/WSS fraction (see svfsi.py's wss_stimulus_field),
+    // whose homeostatic value is intrinsically near zero: a ratio against a
+    // near-zero tauo is ill-conditioned (confirmed empirically -- an 8-47x
+    // blowup from what was actually a modest absolute OSI change). Every
+    // downstream consumer of tau_ratio is unchanged either way, since both
+    // forms are already framed as "tau_ratio - 1" = the deviation from
+    // homeostasis.
     bool additive_stimulus = false;
+
+    // Non-dimensionalizing scale for the additive-stimulus deviation above:
+    // tau_ratio - 1 = (tau - tauo) / additive_stimulus_scale. tauo alone is a
+    // good *center* for the deviation (it is still the field's own genuine
+    // prestress value) but a bad *scale* for it, being near-zero -- dividing
+    // by it (the ratio form) is exactly the ill-conditioning additive_
+    // stimulus exists to avoid, and dividing by nothing at all (scale = 1.0
+    // implicitly) leaves KsKi seeing raw OSI/TransWSS-fraction deviations
+    // (~0.01-0.1) that are an order of magnitude smaller than the ~0.1-1
+    // fractional WSS deviations it was actually calibrated against, so the
+    // stimulus term is swamped by the generic FSI feedback in the coupling
+    // Jacobian (confirmed empirically via uber_robin's Aitken omega always
+    // saturating at 1.0 for OSI/TransWSS but not for WSS). Set this instead
+    // to the stimulus field's own theoretical range, which is a physically
+    // meaningful, tuning-free scale: 0.5 for OSI (combine_osi() is bounded in
+    // [0, 0.5] by construction), 1.0 for a TransWSS/WSS fraction. Default 1.0
+    // (a no-op, matching the historical/WSS-ratio-form behavior where this
+    // field is unused).
+    double additive_stimulus_scale = 1.0;
 
     double KsKi = 0.0;
     double curve = 0.0;
