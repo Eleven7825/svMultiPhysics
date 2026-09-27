@@ -552,6 +552,9 @@ class GREquilibratedParameters : public ParameterLists
     // Lower clamp on the WSS-stimulus ratio tau/tauo (0 = disabled). Caps
     // recirculation-driven runaway growth in the NN-FSG loop.
     Parameter<double> tau_ratio_floor;
+    // Use an additive (tau - tauo) deviation instead of the default ratio
+    // (tau/tauo) form -- see grModelType::additive_stimulus in ComMod.h.
+    Parameter<bool> additive_stimulus;
     Parameter<double> KsKi;
     Parameter<double> curve;
     Parameter<double> mult;

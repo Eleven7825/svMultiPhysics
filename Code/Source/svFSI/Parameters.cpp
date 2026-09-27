@@ -778,6 +778,8 @@ GREquilibratedParameters::GREquilibratedParameters()
   // Lower clamp on tau/tauo in the G&R growth stimulus (0 = disabled). Caps
   // recirculation-driven runaway growth; default reproduces historical results.
   set_parameter("tau_ratio_floor", 0.0, !required, tau_ratio_floor);
+  // Default false reproduces historical behavior (tau/tauo ratio) bit-for-bit.
+  set_parameter("additive_stimulus", false, !required, additive_stimulus);
   set_parameter("KsKi", 0.0, required, KsKi);
   set_parameter("curve", 0.0, required, curve);
   set_parameter("mult", 0.0, required, mult);
