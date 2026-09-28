@@ -757,20 +757,31 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
         (ro - rIo) / rIo * lr; // rIrIo -> rIorIo = 1 for F -> Fo
 
     if (grM.coup_wss) {
-      // additive_stimulus: tau_ratio = 1 + (tau - tauo)/additive_stimulus_scale,
+      // additive_stimulus: tau_ratio = 1 + tanh((tau - tauo)/additive_stimulus_scale),
       // for a stimulus field whose homeostatic value is intrinsically near
       // zero (OSI, or a TransWSS/WSS fraction -- see grModelType::
       // additive_stimulus's own comment in ComMod.h). additive_stimulus_scale
       // non-dimensionalizes the deviation by the field's own theoretical
       // range (see grModelType::additive_stimulus_scale) instead of by tauo
       // (which is a good center for the deviation but, being near-zero, a
-      // bad scale for it). Framing it as "1 + deviation" keeps every
-      // downstream consumer of tau_ratio (Cratio, p_gp, the tangent, grInt
-      // storage) unchanged: they all already only ever use
-      // "tau_ratio - 1" or "EPS*tau_ratio - 1", i.e. the deviation from
-      // homeostasis, regardless of which form computed tau_ratio.
+      // bad scale for it). The tanh wrapper (added after a literature review
+      // found no physiological evidence of an unbounded-linear dose-response
+      // for OSI/TransWSS -- the mechanistic literature instead supports a
+      // saturating structural/organizational effect, and the applied-risk
+      // literature uses threshold-like cutoffs) bounds the deviation to
+      // (-1, 1) instead of growing without limit far from homeostasis, while
+      // reducing to the plain linear deviation (tau-tauo)/additive_stimulus_
+      // scale for small arguments -- i.e. it reuses additive_stimulus_scale
+      // as both the non-dimensionalizing scale AND the saturation reference,
+      // so saturation sets in right as the field approaches its own
+      // characteristic range, not at another free-tuned threshold. Framing
+      // it as "1 + deviation" keeps every downstream consumer of tau_ratio
+      // (Cratio, p_gp, the tangent, grInt storage) unchanged: they all
+      // already only ever use "tau_ratio - 1" or "EPS*tau_ratio - 1", i.e.
+      // the deviation from homeostasis, regardless of which form computed
+      // tau_ratio.
       tau_ratio = grM.additive_stimulus
-                      ? (1.0 + (tau - tauo) / grM.additive_stimulus_scale)
+                      ? (1.0 + std::tanh((tau - tauo) / grM.additive_stimulus_scale))
                       : (tau / tauo);
     } else {
       tau_ratio = pow(rIrIo, -3);
