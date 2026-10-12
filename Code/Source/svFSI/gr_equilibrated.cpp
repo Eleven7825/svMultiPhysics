@@ -267,9 +267,13 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
   // WSS
   const double tau = eVWP(6);
 
-  // dWSS
-  const vec3d dtau(eVWP(9), eVWP(10), eVWP(11));
-  //	std::cout<<eVWP[9]<<" "<<eVWP[10]<<" "<<eVWP[11]<<std::endl;
+  // Local instantaneous TransWSS/WSS fraction, used (opt-in via
+  // grM.ksKi_from_transwss) to drive loss-of-mechanosensing instead of the
+  // geometric insult shape alone -- see its use at the aneurysm insult below.
+  // eVWP(9) was previously "dtau" (dWSS, read into a vec3d from eVWP(9..11))
+  // but never consumed anywhere downstream; repurposed here rather than
+  // adding a 14th gr_properties column.
+  const double trans_sense = eVWP(9);
 
   // pointwise, consistent with mesh generated with Matlab script
   // <NodesElementsAsy.m>
@@ -400,10 +404,35 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
     double f_axi, f_cir;
     eval_insult_profile(grM, X.z, azimuth, lo, mult, f_axi, f_cir);
 
-    // insult_mag (phi_e_hm) only scales the elastin (mu) knock-down; the
-    // stimulus ratio KsKi is knocked down by the shape alone.
+    // insult_mag (phi_e_hm) only scales the elastin (mu) knock-down -- this
+    // (elastin degradation) mechanism is unchanged regardless of
+    // ksKi_from_transwss below.
     mu *= 1.0 - f_time * f_axi * f_cir * grM.insult_mag;
-    KsKi *= 1.0 - f_time * f_axi * f_cir;
+
+    if (grM.ksKi_from_transwss) {
+      // Loss of mechanosensing driven by the LOCAL, instantaneous TransWSS/
+      // WSS fraction (trans_sense) rather than by the geometric insult shape
+      // alone -- following Pfaller et al. 2024's own K_tausigma -> 0 "loss of
+      // mechanosensation" mechanism (see session discussion of their Eq. 15
+      // and Section 4), but replacing their fixed spatial/temporal mask with
+      // a physiologically-motivated driver: endothelial mechanotransmission
+      // degrades under multidirectional/transverse shear regardless of
+      // location (Warboys et al. 2021 -- cells align to minimize transverse
+      // WSS; Ghim et al. 2017 -- mechanotransmission degrades monotonically
+      // with increasing multidirectionality), so higher local TransWSS
+      // should mean lower local sensitivity, independent of whether the main
+      // growth stimulus (tau/tau_ratio above) is itself WSS-, OSI-, or
+      // TransWSS-based. trans_sense >= 0 by construction (a WSS-normalized
+      // fraction), so 1-tanh(trans_sense/scale) stays in (0, 1] without
+      // needing a floor: full sensitivity (gain=1) at trans_sense=0, smoothly
+      // saturating toward complete loss (gain->0) as it grows past
+      // ksKi_transwss_scale -- the same field-characteristic-range scale
+      // convention as additive_stimulus_scale (0.7 for a TransWSS fraction).
+      KsKi *= 1.0 - std::tanh(trans_sense / grM.ksKi_transwss_scale);
+    } else {
+      // historical: stimulus ratio KsKi knocked down by the insult shape alone.
+      KsKi *= 1.0 - f_time * f_axi * f_cir;
+    }
   }
 
   if (example == tortuosity) {

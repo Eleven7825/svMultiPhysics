@@ -558,6 +558,13 @@ class GREquilibratedParameters : public ParameterLists
     // Non-dimensionalizing scale for the additive deviation above -- see
     // grModelType::additive_stimulus_scale in ComMod.h.
     Parameter<double> additive_stimulus_scale;
+    // Drive the aneurysm example's loss-of-mechanosensing KsKi knock-down from
+    // the local TransWSS/WSS fraction instead of the geometric insult shape --
+    // see grModelType::ksKi_from_transwss in ComMod.h.
+    Parameter<bool> ksKi_from_transwss;
+    // Scale for the ksKi_from_transwss knock-down above -- see
+    // grModelType::ksKi_transwss_scale in ComMod.h.
+    Parameter<double> ksKi_transwss_scale;
     Parameter<double> KsKi;
     Parameter<double> curve;
     Parameter<double> mult;

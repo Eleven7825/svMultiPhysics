@@ -783,6 +783,9 @@ GREquilibratedParameters::GREquilibratedParameters()
   // Default 1.0 is a no-op; set to the stimulus field's theoretical range
   // (0.5 for OSI, 1.0 for a TransWSS/WSS fraction) when additive_stimulus is on.
   set_parameter("additive_stimulus_scale", 1.0, !required, additive_stimulus_scale);
+  // Default false reproduces historical behavior (geometric insult shape only).
+  set_parameter("ksKi_from_transwss", false, !required, ksKi_from_transwss);
+  set_parameter("ksKi_transwss_scale", 0.7, !required, ksKi_transwss_scale);
   set_parameter("KsKi", 0.0, required, KsKi);
   set_parameter("curve", 0.0, required, curve);
   set_parameter("mult", 0.0, required, mult);

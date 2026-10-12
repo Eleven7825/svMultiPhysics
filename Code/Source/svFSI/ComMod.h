@@ -475,6 +475,32 @@ class grModelType
     // historical/WSS-ratio-form's own small-deviation behavior).
     double additive_stimulus_scale = 1.0;
 
+    // Selects what drives the aneurysm example's loss-of-mechanosensing
+    // knock-down of KsKi (see the aneurysm insult block in gr_equilibrated.cpp).
+    // false (default, historical): KsKi *= 1 - f_time*f_axi*f_cir, the same
+    // fixed spatial/temporal insult shape used for the elastin (mu) knock-down
+    // -- i.e. a location that was assigned "dysfunctional" as a model input,
+    // matching Pfaller et al. 2024's own K_tausigma -> 0 mechanism (their
+    // Section 4). true: KsKi *= 1 - tanh(trans_sense/ksKi_transwss_scale),
+    // where trans_sense is the LOCAL, INSTANTANEOUS TransWSS/WSS fraction
+    // (gr_properties column 9, written by svfsi.py's set_solid() independently
+    // of whatever field drives the main tau/tau_ratio stimulus) -- i.e.
+    // mechanosensing loss tracks current flow disturbance directly, rather
+    // than a fixed geometric mask. Physiological motivation: Warboys et al.
+    // 2021 (endothelial cells align to minimize transverse WSS, not the mean
+    // flow vector) and Ghim et al. 2017 (mechanotransmission degrades
+    // monotonically with multidirectionality) support disturbed/transverse
+    // shear impairing mechanosensing; elastin degradation (mu's own
+    // knock-down above) is unaffected by this flag either way.
+    bool ksKi_from_transwss = false;
+
+    // Non-dimensionalizing/saturation scale for the ksKi_from_transwss
+    // knock-down above -- same field-characteristic-range convention as
+    // additive_stimulus_scale. Default 0.7, matching the TransWSS/WSS
+    // fraction's own empirically observed near-maximum (see additive_
+    // stimulus_scale's own comment).
+    double ksKi_transwss_scale = 0.7;
+
     double KsKi = 0.0;
     double curve = 0.0;
     double mult = 0.0;
