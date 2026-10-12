@@ -565,6 +565,9 @@ class GREquilibratedParameters : public ParameterLists
     // Scale for the ksKi_from_transwss knock-down above -- see
     // grModelType::ksKi_transwss_scale in ComMod.h.
     Parameter<double> ksKi_transwss_scale;
+    // Use the plain linear form instead of tanh-saturating -- see
+    // grModelType::ksKi_transwss_linear in ComMod.h.
+    Parameter<bool> ksKi_transwss_linear;
     Parameter<double> KsKi;
     Parameter<double> curve;
     Parameter<double> mult;

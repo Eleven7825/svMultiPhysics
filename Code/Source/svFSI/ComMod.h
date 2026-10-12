@@ -501,6 +501,14 @@ class grModelType
     // stimulus_scale's own comment).
     double ksKi_transwss_scale = 0.7;
 
+    // Use the plain linear form KsKi *= max(0, 1 - trans_sense/ksKi_transwss_
+    // scale) instead of the tanh-saturating one above -- no saturation, KsKi
+    // reaches exactly 0 at trans_sense = ksKi_transwss_scale (clamped below
+    // that, since trans_sense can exceed the scale). With ksKi_transwss_scale
+    // = 1.0 this is exactly "KsKi *= 1 - trans_sense". Only meaningful when
+    // ksKi_from_transwss is also true. Default false (tanh form).
+    bool ksKi_transwss_linear = false;
+
     double KsKi = 0.0;
     double curve = 0.0;
     double mult = 0.0;

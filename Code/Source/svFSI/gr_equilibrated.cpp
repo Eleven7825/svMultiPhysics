@@ -428,7 +428,15 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
       // saturating toward complete loss (gain->0) as it grows past
       // ksKi_transwss_scale -- the same field-characteristic-range scale
       // convention as additive_stimulus_scale (0.7 for a TransWSS fraction).
-      KsKi *= 1.0 - std::tanh(trans_sense / grM.ksKi_transwss_scale);
+      // ksKi_transwss_linear opts into the plain linear form instead (no
+      // saturation): KsKi *= 1 - trans_sense/scale, clamped at 0 so KsKi
+      // cannot flip sign past trans_sense = scale. With scale = 1.0 this is
+      // exactly "KsKi *= 1 - trans_sense".
+      if (grM.ksKi_transwss_linear) {
+        KsKi *= std::max(0.0, 1.0 - trans_sense / grM.ksKi_transwss_scale);
+      } else {
+        KsKi *= 1.0 - std::tanh(trans_sense / grM.ksKi_transwss_scale);
+      }
     } else {
       // historical: stimulus ratio KsKi knocked down by the insult shape alone.
       KsKi *= 1.0 - f_time * f_axi * f_cir;

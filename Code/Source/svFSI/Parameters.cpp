@@ -786,6 +786,7 @@ GREquilibratedParameters::GREquilibratedParameters()
   // Default false reproduces historical behavior (geometric insult shape only).
   set_parameter("ksKi_from_transwss", false, !required, ksKi_from_transwss);
   set_parameter("ksKi_transwss_scale", 0.7, !required, ksKi_transwss_scale);
+  set_parameter("ksKi_transwss_linear", false, !required, ksKi_transwss_linear);
   set_parameter("KsKi", 0.0, required, KsKi);
   set_parameter("curve", 0.0, required, curve);
   set_parameter("mult", 0.0, required, mult);
