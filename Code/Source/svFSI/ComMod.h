@@ -509,6 +509,13 @@ class grModelType
     // ksKi_from_transwss is also true. Default false (tanh form).
     bool ksKi_transwss_linear = false;
 
+    // Stage ksKi_from_transwss to begin only once absolute load/G&R step t
+    // (eVWP(7), the same "t" gr_equilibrated.cpp reads for coup_wss) reaches
+    // this value -- see the gate's own comment at its use in gr_equilibrated.
+    // cpp. Default 0.0: always active (the ungated default, same as before
+    // this parameter existed).
+    double ksKi_transwss_gate_step = 0.0;
+
     double KsKi = 0.0;
     double curve = 0.0;
     double mult = 0.0;

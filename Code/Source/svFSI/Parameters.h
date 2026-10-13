@@ -568,6 +568,9 @@ class GREquilibratedParameters : public ParameterLists
     // Use the plain linear form instead of tanh-saturating -- see
     // grModelType::ksKi_transwss_linear in ComMod.h.
     Parameter<bool> ksKi_transwss_linear;
+    // Delay ksKi_from_transwss's activation until load/G&R step t reaches
+    // this value -- see grModelType::ksKi_transwss_gate_step in ComMod.h.
+    Parameter<double> ksKi_transwss_gate_step;
     Parameter<double> KsKi;
     Parameter<double> curve;
     Parameter<double> mult;

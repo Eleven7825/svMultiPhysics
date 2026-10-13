@@ -202,6 +202,7 @@ SeMaterialPropertiesMapType set_material_props = {
   lDmn.grM.ksKi_from_transwss = params.ksKi_from_transwss.value();
   lDmn.grM.ksKi_transwss_scale = params.ksKi_transwss_scale.value();
   lDmn.grM.ksKi_transwss_linear = params.ksKi_transwss_linear.value();
+  lDmn.grM.ksKi_transwss_gate_step = params.ksKi_transwss_gate_step.value();
   lDmn.grM.KsKi = params.KsKi.value();
   lDmn.grM.curve = params.curve.value();
   lDmn.grM.mult = params.mult.value();
