@@ -410,32 +410,46 @@ void stress_tangent_(const grModelType &grM, const double Fe[3][3],
     mu *= 1.0 - f_time * f_axi * f_cir * grM.insult_mag;
 
     if (grM.ksKi_from_transwss) {
-      // Loss of mechanosensing driven by the LOCAL, instantaneous TransWSS/
-      // WSS fraction (trans_sense) rather than by the geometric insult shape
-      // alone -- following Pfaller et al. 2024's own K_tausigma -> 0 "loss of
-      // mechanosensation" mechanism (see session discussion of their Eq. 15
-      // and Section 4), but replacing their fixed spatial/temporal mask with
-      // a physiologically-motivated driver: endothelial mechanotransmission
-      // degrades under multidirectional/transverse shear regardless of
-      // location (Warboys et al. 2021 -- cells align to minimize transverse
-      // WSS; Ghim et al. 2017 -- mechanotransmission degrades monotonically
-      // with increasing multidirectionality), so higher local TransWSS
-      // should mean lower local sensitivity, independent of whether the main
-      // growth stimulus (tau/tau_ratio above) is itself WSS-, OSI-, or
-      // TransWSS-based. trans_sense >= 0 by construction (a WSS-normalized
-      // fraction), so 1-tanh(trans_sense/scale) stays in (0, 1] without
-      // needing a floor: full sensitivity (gain=1) at trans_sense=0, smoothly
-      // saturating toward complete loss (gain->0) as it grows past
-      // ksKi_transwss_scale -- the same field-characteristic-range scale
-      // convention as additive_stimulus_scale (0.7 for a TransWSS fraction).
-      // ksKi_transwss_linear opts into the plain linear form instead (no
-      // saturation): KsKi *= 1 - trans_sense/scale, clamped at 0 so KsKi
-      // cannot flip sign past trans_sense = scale. With scale = 1.0 this is
-      // exactly "KsKi *= 1 - trans_sense".
-      if (grM.ksKi_transwss_linear) {
-        KsKi *= std::max(0.0, 1.0 - trans_sense / grM.ksKi_transwss_scale);
-      } else {
-        KsKi *= 1.0 - std::tanh(trans_sense / grM.ksKi_transwss_scale);
+      // ksKi_transwss_gate_step (default 0.0, always active) stages this
+      // mechanism to begin only once absolute load/G&R step t reaches it --
+      // paired with a shorter n_t_end so elastin degradation (mu's own
+      // knock-down above, which is NOT gated and keeps using the full
+      // f_time ramp) finishes ramping in and HOLDS (sgr=min(t,partialtime)
+      // saturates past n_t_end) for one or more steps BEFORE the gate opens.
+      // Before the gate opens, KsKi is left COMPLETELY UNTOUCHED (not a
+      // fallback to the historical geometric knock-down below) -- i.e. a
+      // gate_step set beyond this run's own range gives pure elastin
+      // degradation with full mechanosensing intact throughout, for a
+      // genuine "elastin-alone" baseline run (see fsg.py's restart-chained
+      // two-run staging).
+      if (t >= grM.ksKi_transwss_gate_step) {
+        // Loss of mechanosensing driven by the LOCAL, instantaneous TransWSS/
+        // WSS fraction (trans_sense) rather than by the geometric insult shape
+        // alone -- following Pfaller et al. 2024's own K_tausigma -> 0 "loss of
+        // mechanosensation" mechanism (see session discussion of their Eq. 15
+        // and Section 4), but replacing their fixed spatial/temporal mask with
+        // a physiologically-motivated driver: endothelial mechanotransmission
+        // degrades under multidirectional/transverse shear regardless of
+        // location (Warboys et al. 2021 -- cells align to minimize transverse
+        // WSS; Ghim et al. 2017 -- mechanotransmission degrades monotonically
+        // with increasing multidirectionality), so higher local TransWSS
+        // should mean lower local sensitivity, independent of whether the main
+        // growth stimulus (tau/tau_ratio above) is itself WSS-, OSI-, or
+        // TransWSS-based. trans_sense >= 0 by construction (a WSS-normalized
+        // fraction), so 1-tanh(trans_sense/scale) stays in (0, 1] without
+        // needing a floor: full sensitivity (gain=1) at trans_sense=0, smoothly
+        // saturating toward complete loss (gain->0) as it grows past
+        // ksKi_transwss_scale -- the same field-characteristic-range scale
+        // convention as additive_stimulus_scale (0.7 for a TransWSS fraction).
+        // ksKi_transwss_linear opts into the plain linear form instead (no
+        // saturation): KsKi *= 1 - trans_sense/scale, clamped at 0 so KsKi
+        // cannot flip sign past trans_sense = scale. With scale = 1.0 this is
+        // exactly "KsKi *= 1 - trans_sense".
+        if (grM.ksKi_transwss_linear) {
+          KsKi *= std::max(0.0, 1.0 - trans_sense / grM.ksKi_transwss_scale);
+        } else {
+          KsKi *= 1.0 - std::tanh(trans_sense / grM.ksKi_transwss_scale);
+        }
       }
     } else {
       // historical: stimulus ratio KsKi knocked down by the insult shape alone.
